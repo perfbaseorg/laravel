@@ -1,0 +1,43 @@
+{
+    "name": "perfbase/laravel",
+    "description": "A Laravel extension for the Perfbase profiling tool.",
+    "version": "0.0.1",
+    "keywords": [
+        "Perfbase",
+        "laravel",
+        "profiling"
+    ],
+    "homepage": "https://github.com/perfbaseorg/laravel",
+    "license": "Apache-2.0",
+    "authors": [
+        {
+            "name": "Ben Poulson",
+            "email": "ben.poulson@perfbase.com"
+        }
+    ],
+    "require": {
+        "php": "^8.0|^8.1|^8.2|^8.3|^8.4",
+        "illuminate/support": "^8.0|^9.0|^10.0",
+        "perfbase/php-sdk": "dev-main"
+    },
+    "autoload": {
+        "psr-4": {
+            "Perfbase\\Laravel\\": "src/"
+        }
+    },
+   "extra": {
+        "laravel": {
+            "providers": [
+                "Perfbase\\Laravel\\PerfbaseServiceProvider"
+            ],
+            "aliases": {
+                "Perfbase": "Perfbase\\Laravel\\Facades\\Perfbase"
+            }
+        }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true,
+    "require-dev": {
+        "orchestra/testbench": "^8.27"
+    }
+}
