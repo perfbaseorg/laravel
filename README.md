@@ -1,7 +1,8 @@
 # Perfbase for Laravel
 
-[![Latest Version on Packagist](https://img.shields.io/packagist/v/perfbase/laravel.svg?style=flat-square)](https://packagist.org/packages/perfbase/laravel)
-[![Total Downloads](https://img.shields.io/packagist/dt/perfbase/laravel.svg?style=flat-square)](https://packagist.org/packages/perfbase/laravel)
+![Packagist License](https://img.shields.io/packagist/l/perfbase/laravel)
+![Packagist Version](https://img.shields.io/packagist/v/perfbase/laravel)
+![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/perfbaseorg/laravel/ci.yml?branch=main)
 
 Laravel integration for Perfbase - the PHP profiling service that helps you understand and optimize your application's performance.
 
