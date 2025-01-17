@@ -8,11 +8,10 @@ return new class extends Migration
 {
     public function up(): void
     {
-        $connection = config('perfbase.database.connection');
-        $table = config('perfbase.database.table');
-
+        $connection = config('perfbase.cache.config.database.connection');
+        $table = config('perfbase.cache.config.database.table');
         Schema::connection($connection)->create($table, function (Blueprint $table) {
-            $table->uuid('id')->primary();
+            $table->id();
             $table->longText('data');
             $table->timestamps();
         });
@@ -20,9 +19,8 @@ return new class extends Migration
 
     public function down(): void
     {
-        $connection = config('perfbase.database.connection');
-        $table = config('perfbase.database.table');
-
+        $connection = config('perfbase.cache.config.database.connection');
+        $table = config('perfbase.cache.config.database.table');
         Schema::connection($connection)->dropIfExists($table);
     }
 };

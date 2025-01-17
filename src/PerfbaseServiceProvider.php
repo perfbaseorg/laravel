@@ -2,59 +2,65 @@
 
 namespace Perfbase\Laravel;
 
-use Illuminate\Contracts\Http\Kernel;
+use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\ServiceProvider;
-use Perfbase\Laravel\Middleware\ProfilerMiddleware;
-use Perfbase\SDK\Client;
 use Perfbase\SDK\Config;
-use Perfbase\Laravel\Commands\SyncProfilesCommand;
-use Illuminate\Console\Scheduling\Schedule;
-use Perfbase\Laravel\Commands\ClearProfilesCommand;
 
 class PerfbaseServiceProvider extends ServiceProvider
 {
+    /**
+     * @return void
+     */
     public function boot()
     {
         if ($this->app->runningInConsole()) {
             $this->publishes([
                 __DIR__ . '/../config/perfbase.php' => config_path('perfbase.php'),
             ], 'perfbase-config');
-
-            $this->loadMigrationsFrom(__DIR__ . '/../database/migrations');
-
-            $this->commands([
-                SyncProfilesCommand::class,
-                ClearProfilesCommand::class,
-            ]);
         }
-
-        if (config('perfbase.enabled')) {
-            $this->bootProfiler();
-        }
-
-        $this->callAfterResolving(Schedule::class, function (Schedule $schedule) {
-            if (in_array(config('perfbase.cache'), ['database', 'file'], true)) {
-                $schedule->command('perfbase:sync-profiles')
-                    ->everyMinutes(config('perfbase.sync_interval', 60))
-                    ->withoutOverlapping();
-            }
-        });
     }
 
     public function register()
     {
+        // Register the config
         $this->mergeConfigFrom(__DIR__ . '/../config/perfbase.php', 'perfbase');
 
-        $this->app->singleton(Client::class, function ($app) {
-            return new Client(
-                Config::fromArray($app['config']->get('perfbase'))
-            );
-        });
-    }
+        /**
+         * Bind the Config class to the container
+         */
+        $this->app->bind(Config::class, function ($app) {
 
-    private function bootProfiler()
-    {
-        $kernel = $this->app->make(Kernel::class);
-        $kernel->pushMiddleware(ProfilerMiddleware::class);
+            /**
+             * @var array<string, mixed> $config
+             * @phpstan-ignore offsetAccess.nonOffsetAccessible
+             */
+            $config = $app['config'];
+
+            /** @var array<string, mixed> $features */
+            $features = $config['perfbase.profiler_features'];
+
+            /** @var string $apiKey */
+            $apiKey = $config['perfbase.api_key'];
+
+            return Config::fromArray([
+                'api_key' => $apiKey,
+                'ignored_functions' => $features['ignored_functions'],
+                'use_coarse_clock' => $features['use_coarse_clock'],
+                'track_file_compilation' => $features['track_file_compilation'],
+                'track_memory_allocation' => $features['track_memory_allocation'],
+                'track_cpu_time' => $features['track_cpu_time'],
+                'track_pdo' => $features['track_pdo'],
+                'track_http' => $features['track_http'],
+                'track_caches' => $features['track_caches'],
+                'track_mongodb' => $features['track_mongodb'],
+                'track_elasticsearch' => $features['track_elasticsearch'],
+                'track_queues' => $features['track_queues'],
+                'track_aws_sdk' => $features['track_aws_sdk'],
+                'track_file_operations' => $features['track_file_operations'],
+                'proxy' => $features['proxy'],
+                'timeout' => $features['timeout'],
+                'async' => $features['async'],
+            ]);
+        });
     }
 }

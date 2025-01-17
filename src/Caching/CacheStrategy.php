@@ -7,7 +7,7 @@ interface CacheStrategy
     /**
      * Store a new profile in the cache.
      *
-     * @param array $profileData The profile data to store
+     * @param array<string, mixed> $profileData The profile data to store
      * @return void
      */
     public function store(array $profileData): void;
@@ -15,18 +15,33 @@ interface CacheStrategy
     /**
      * Get profiles that haven't been synced yet.
      *
-     * @param int $limit Maximum number of profiles to retrieve
-     * @return iterable
+     * @param int $chunk Maximum number of profiles to retrieve at once
+     * @return iterable<array<array<string, mixed>>>
      */
-    public function getUnsyncedProfiles(int $limit = 100): iterable;
+    public function getUnsentProfiles(int $chunk = 100): iterable;
+
+    /**
+     * Count the number of unsent profiles in the cache.
+     *
+     * @return int
+     */
+    public function countUnsentProfiles(): int;
 
     /**
      * Delete a specific profile from the cache.
      *
-     * @param mixed $identifier The profile identifier
+     * @param mixed $id The profile identifier
      * @return void
      */
-    public function delete(mixed $identifier): void;
+    public function delete($id): void;
+
+    /**
+     * Delete multiple profiles from the cache.
+     *
+     * @param array<mixed> $ids
+     * @return void
+     */
+    public function deleteMass(array $ids): void;
 
     /**
      * Clear all cached profiles.

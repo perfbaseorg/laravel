@@ -4,79 +4,133 @@ namespace Perfbase\Laravel\Caching;
 
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
+use InvalidArgumentException;
+use SplFileInfo;
 
 class FileStrategy implements CacheStrategy
 {
     /**
-     * @var string The path where profile files are stored
+     * The path where profile files are stored
+     * @var string
      */
     private string $path;
 
+
     /**
-     * @var string The file extension for profile files
+     * The file extension for profile files
+     * @var string
      */
-    private string $extension;
+    private string $extension = '.perfbase';
 
     /**
      * Initialize the file strategy with configured path and extension.
      */
     public function __construct()
     {
-        $this->path = config('perfbase.connections.file.path');
-        $this->extension = config('perfbase.connections.file.extension');
-        
-        if (!File::exists($this->path)) {
-            File::makeDirectory($this->path, 0755, true);
+        $path = config('perfbase.connections.file.path');
+        if (!is_string($path)) {
+            throw new InvalidArgumentException('The file cache path must be a string');
         }
+        $this->path = $path;
     }
 
     /**
      * Store a new profile as a file.
      *
-     * @param array $profileData The profile data to store
+     * @param array<string, mixed> $profileData The profile data to store
      * @return void
      */
     public function store(array $profileData): void
     {
+        if (!File::exists($this->path)) {
+            File::makeDirectory($this->path, 0755, true);
+        }
+
         $filename = Str::uuid() . $this->extension;
-        File::put($this->path . '/' . $filename, json_encode([
-            'profile_data' => $profileData,
+        File::put($this->path . '/' . $filename, serialize([
+            'id' => $filename,
+            'data' => $profileData,
             'created_at' => now()->toIso8601String(),
         ]));
     }
 
     /**
-     * Get profiles from files that haven't been synced yet.
+     * Get profiles that haven't been synced yet.
      *
-     * @param int $limit Maximum number of profiles to retrieve
-     * @return \Generator
+     * @param int $chunk Maximum number of profiles to retrieve at once
+     * @return iterable<array<array<string,mixed>>>
      */
-    public function getUnsyncedProfiles(int $limit = 100): iterable
+    public function getUnsentProfiles(int $chunk = 100): iterable
     {
-        $files = collect(File::files($this->path))
-            ->filter(fn($file) => Str::endsWith($file->getFilename(), $this->extension))
-            ->take($limit);
+        $files = collect(File::files($this->path));
 
-        foreach ($files as $file) {
-            $content = json_decode(File::get($file), true);
-            yield [
-                'file' => $file,
-                'profile_data' => $content['profile_data'],
-                'created_at' => $content['created_at']
-            ];
+        /** @var array<array<string>> $fileChunks */
+        $fileChunks = $files->chunk($chunk);
+
+        // Yield each profile in the chunk
+        foreach ($fileChunks as $fileChunk) {
+
+            /** @var array<array<string, string>> $yield */
+            $yield = [];
+
+            foreach ($fileChunk as $file) {
+
+                /** @var array<string, mixed> $content */
+                $content = unserialize(File::get($file));
+
+                /** @var string $data - This will be json data */
+                $data = $content['data'];
+
+                /** @var string $created_at */
+                $created_at = $content['created_at'];
+
+                $yield[] = [
+                    'id' => $file,
+                    'data' => $data,
+                    'created_at' => $created_at
+                ];
+            }
+
+            yield $yield;
         }
     }
 
     /**
-     * Delete a specific profile file.
+     * Count the number of unsent profiles in the cache.
      *
-     * @param array $identifier The profile identifier containing the file path
+     * @return int
+     */
+    public function countUnsentProfiles(): int
+    {
+        return collect(File::files($this->path))
+            ->filter(fn(SplFileInfo $file) => Str::endsWith($file->getFilename(), $this->extension))
+            ->count();
+    }
+
+    /**
+     * Delete multiple profiles from the cache.
+     *
+     * @param array<string> $ids
      * @return void
      */
-    public function delete(mixed $identifier): void
+    public function deleteMass(array $ids): void
     {
-        if (isset($identifier['file'])) {
-            File::delete($identifier['file']);
+        foreach ($ids as $id) {
+            $this->delete($id);
+        }
+    }
+
+    /**
+     * Delete a specific profile from the filesystem.
+     *
+     * @param string $id The file path
+     * @return void
+     */
+    public function delete($id): void
+    {
+        $fullPath = $this->path . '/' . $id;
+        if (File::exists($fullPath)) {
+            File::delete($fullPath);
         }
     }
 
@@ -88,7 +142,7 @@ class FileStrategy implements CacheStrategy
     public function clear(): void
     {
         collect(File::files($this->path))
-            ->filter(fn($file) => Str::endsWith($file->getFilename(), $this->extension))
-            ->each(fn($file) => File::delete($file));
+            ->filter(fn(SplFileInfo $file) => Str::endsWith($file->getFilename(), $this->extension))
+            ->each(fn(SplFileInfo $file) => File::delete($file->getRealPath()));
     }
 } 

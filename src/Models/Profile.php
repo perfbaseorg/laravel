@@ -3,12 +3,10 @@
 namespace Perfbase\Laravel\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use RuntimeException;
 
 class Profile extends Model
 {
-    use HasUuids;
-
     /**
      * The attributes that are mass assignable.
      *
@@ -19,22 +17,40 @@ class Profile extends Model
     ];
 
     /**
-     * The attributes that should be cast.
-     *
-     * @var array<string, string>
+     * @param string $input
+     * @return array<string, mixed>
      */
-    protected $casts = [
-        'data' => 'array',
-    ];
+    public static function decode(string $input): array
+    {
+
+        $gz = gzdecode(base64_decode($input));
+        if ($gz === false) {
+            throw new RuntimeException('Failed to decompress data');
+        }
+
+        /** @var array<string, mixed> $value */
+        $value = unserialize($gz);
+
+        if (!is_array($value)) {
+            throw new RuntimeException('Corrupted data');
+        }
+
+        return $value;
+    }
 
     /**
-     * Get the columns that should receive a unique identifier.
-     *
-     * @return array
+     * @param array<string, mixed> $input
+     * @return string
      */
-    public function uniqueIds(): array
+    public static function encode(array $input): string
     {
-        return ['id'];
+        $gz = gzencode(serialize($input));
+
+        if ($gz === false) {
+            throw new RuntimeException('Failed to compress data');
+        }
+
+        return base64_encode($gz);
     }
 
     /**
@@ -44,7 +60,11 @@ class Profile extends Model
      */
     public function getConnectionName()
     {
-        return config('perfbase.database.connection');
+        $connection = config('perfbase.cache.config.database.connection');
+        if (!is_string($connection)) {
+            throw new RuntimeException('Invalid connection name');
+        }
+        return $connection;
     }
 
     /**
@@ -54,6 +74,11 @@ class Profile extends Model
      */
     public function getTable()
     {
-        return config('perfbase.database.table');
+        $table = config('perfbase.cache.config.database.table');
+        if (!is_string($table)) {
+            throw new RuntimeException('Invalid table name');
+        }
+
+        return $table;
     }
 }
