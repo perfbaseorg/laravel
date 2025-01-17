@@ -1,7 +1,7 @@
 {
   "name": "perfbase/laravel",
   "description": "A Laravel extension for the Perfbase profiling tool.",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "keywords": [
     "Perfbase",
     "laravel",
