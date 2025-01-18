@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "3423d94e1e09a279e0f86ceffd15817d",
+    "content-hash": "403e0b458d438e9d41d9724e924aaa33",
     "packages": [
         {
             "name": "brick/math",
@@ -1894,16 +1894,16 @@
         },
         {
             "name": "perfbase/php-sdk",
-            "version": "0.0.11",
+            "version": "0.0.12",
             "source": {
                 "type": "git",
                 "url": "https://github.com/perfbaseorg/php-sdk.git",
-                "reference": "78145338fdd6fcb4683c115f71474a2394d91eb9"
+                "reference": "6b0954d6c705795056e13e5fcaa83b7b570061be"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/perfbaseorg/php-sdk/zipball/78145338fdd6fcb4683c115f71474a2394d91eb9",
-                "reference": "78145338fdd6fcb4683c115f71474a2394d91eb9",
+                "url": "https://api.github.com/repos/perfbaseorg/php-sdk/zipball/6b0954d6c705795056e13e5fcaa83b7b570061be",
+                "reference": "6b0954d6c705795056e13e5fcaa83b7b570061be",
                 "shasum": ""
             },
             "require": {
@@ -1937,9 +1937,9 @@
             "description": "An SDK for sending profiling data to Perfbase",
             "support": {
                 "issues": "https://github.com/perfbaseorg/php-sdk/issues",
-                "source": "https://github.com/perfbaseorg/php-sdk/tree/v0.0.11"
+                "source": "https://github.com/perfbaseorg/php-sdk/tree/v0.0.12"
             },
-            "time": "2025-01-18T11:40:30+00:00"
+            "time": "2025-01-18T13:08:16+00:00"
         },
         {
             "name": "phpoption/phpoption",
