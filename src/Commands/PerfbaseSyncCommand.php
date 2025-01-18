@@ -104,10 +104,7 @@ class PerfbaseSyncCommand extends Command
                         }
 
                         // Submit to the API
-                        $client->submitTrace(
-                            $traceData,
-                            false,
-                        );
+                        $client->submitTrace($traceData);
 
                         // Store the ID for deletion
                         $ids[] = $profile['id'];
