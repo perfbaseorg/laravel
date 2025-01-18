@@ -68,11 +68,18 @@ class PerfbaseMiddleware
         // Proceed with the request and capture the response.
         $response = $next($request);
 
-        // Get the route action name if available.
-        if ($request->route() instanceof Route) {
-            $instance->attributes->action = $request->route()->getActionName();
+        $route = $request->route();
+
+        // Get the route method and URI if available.
+        if ($route instanceof Route) {
+            $instance->attributes->action = sprintf(
+                '%s %s',
+                $request->getMethod(),
+                $route->uri()
+            );
         } else {
-            $instance->attributes->action = 'Closure';
+            // Help! Need to know what else $route could be.
+            throw new RuntimeException('Route information is not available.');
         }
 
         // Set user-related attributes if the user is authenticated.

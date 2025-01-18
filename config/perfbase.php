@@ -4,6 +4,18 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Enable/Disable Profiling - Used to control the profiler state.
+    |--------------------------------------------------------------------------
+    |
+    | This option allows you to enable or disable the profiler. When disabled,
+    | the profiler will not collect any data. This is useful when you want to
+    | disable the profiler in production or specific environments.
+    |
+    */
+    'enabled' => env('PERFBASE_ENABLED', false),
+
+    /*
+    |--------------------------------------------------------------------------
     | API Key - Required - Used to authenticate your project with Perfbase.
     |--------------------------------------------------------------------------
     |
@@ -61,18 +73,6 @@ return [
             ]
         ]
     ],
-
-    /*
-    |--------------------------------------------------------------------------
-    | Enable/Disable Profiling - Used to control the profiler state.
-    |--------------------------------------------------------------------------
-    |
-    | This option allows you to enable or disable the profiler. When disabled,
-    | the profiler will not collect any data. This is useful when you want to
-    | disable the profiler in production or specific environments.
-    |
-    */
-    'enabled' => env('PERFBASE_ENABLED', false),
 
     /*
     |--------------------------------------------------------------------------
