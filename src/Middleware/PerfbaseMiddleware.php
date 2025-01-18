@@ -77,6 +77,9 @@ class PerfbaseMiddleware
                 $request->getMethod(),
                 $route->uri()
             );
+        } else {
+            // Help! Need to know what else $route could be.
+            throw new RuntimeException('Route information is not available.');
         }
 
         // Set user-related attributes if the user is authenticated.
