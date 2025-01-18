@@ -8,100 +8,53 @@ Laravel integration for Perfbase - the PHP profiling service that helps you unde
 
 ## Installation
 
-You can install the package via composer:
-
+1. Install package to your laravel Project
 ```bash
 composer require perfbase/laravel
 ```
 
-After installation, publish the configuration file:
-
+2. Publish configuration
 ```bash
 php artisan vendor:publish --tag="perfbase-config"
 ```
 
-This will create a `perfbase.php` file in your `config` directory.
-
-## Configuration
-
-Add your Perfbase API key to your `.env` file:
-
+3. Add basic Perfbase config to your `.env` file
 ```env
-PERFBASE_API_KEY=your-api-key
 PERFBASE_ENABLED=true
+PERFBASE_API_KEY=your_key_here
+PERFBASE_SAMPLE_RATE=1.0
 ```
 
-### Available Configuration Options
-
-```
-# Enable/disable profiling
-PERFBASE_ENABLED=true
-
-# Your API key
-PERFBASE_API_KEY=your-api-key
-
-API URL (defaults to https://api.perfbase.com/v1)
-PERFBASE_API_URL=https://api.perfbase.com/v1
-
-# Cache strategy: none, database, or file
-PERFBASE_CACHE=none
-
-# For database caching:
-PERFBASE_DB_CONNECTION=mysql
-PERFBASE_TABLE_NAME=perfbase_profiles
-
-# How often to sync cached profiles (in minutes)
-PERFBASE_SYNC_INTERVAL=60
-```
-
-## Usage
-
-### Basic Usage
-
-Perfbase will automatically profile your Laravel application's requests when enabled. No additional code is required.
-
-### Manual Profiling
-
-You can manually control profiling using the facade:
-
+4. Add our to your middleware stack
 ```php
-use Perfbase\Laravel\Facades\Perfbase;
-// Start profiling
-Perfbase::startProfiling();
-// Your code here...
-// Stop profiling and send data
-Perfbase::stopProfiling();
+\Perfbase\Laravel\Middleware\PerfbaseMiddleware::class
 ```
 
-### Caching Strategies
+5. Start profiling your application!
 
-Perfbase supports three caching strategies for profile data:
+### Sending mode - local buffering
 
-1. **None (Default)**: Profiles are sent directly to the API
-2. **Database**: Profiles are stored in your database and synced periodically
-3. **File**: Profiles are stored as files and synced periodically
+If you'd like to buffer data before sending it to Perfbase, you can configure the `PERFBASE_SENDING_MODE` option. 
+The available sending mode values are: 
 
-To use database or file caching, update your `.env`:
-
-```env
-PERFBASE_CACHE=database
-# OR
-PERFBASE_CACHE=file
-```
+1. `sync`: Sends data immediately without buffering.
+2. `database`: Stores data in files before sending it to Perfbase.
+3. `file`: Caches data in a database table before sending.
 
 ### Available Commands
 
 ```bash
-# Manually sync cached profiles to the API
-php artisan perfbase:sync-profiles
+# Send locally buffered traces to the API, then removes your locally buffered copy.
+# Consider running this command in a scheduled cron job.
+php artisan perfbase:sync
 
-# Clear all cached profiles
+# Delete all locally buffered traces. (Useful for debugging, or destruction)
 php artisan perfbase:clear
 ```
 
 ## Requirements
 
-- PHP 8.0 or higher
+- PHP 7.4 or higher
 - Laravel 8.0 or higher
 - Perfbase PHP extension
 

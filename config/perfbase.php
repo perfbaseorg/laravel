@@ -4,7 +4,7 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | API Key
+    | API Key - Required - Used to authenticate your project with Perfbase.
     |--------------------------------------------------------------------------
     |
     | This is for your Perfbase API key assigned to your project.
@@ -13,10 +13,45 @@ return [
     */
     'api_key' => env('PERFBASE_API_KEY'),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Sample Rate - Required - Used to control the sampling rate of the profiler.
+    |--------------------------------------------------------------------------
+    |
+    | The sample_rate setting determines the proportion of traces that will be captured
+    | and sent to Perfbase. The value should be a decimal between 0.0 and 1.0.
+    |
+    | For example, a sample_rate of 0.1 will capture 10% of traces.
+    | A sample_rate of 1.0 will capture all traces.
+    | A sample_rate of 0.0 will capture no traces.
+    |
+    */
+    'sample_rate' => env('PERFBASE_SAMPLE_RATE', 0.1),
 
-    'cache' => [
-        'enabled' => false, // false, 'file' or 'database'
+    /*
+    |--------------------------------------------------------------------------
+    | Sending Configuration - Used to control when data is sent to Perfbase.
+    |--------------------------------------------------------------------------
+    |
+    | If you'd like to buffer data before sending it to Perfbase, you can configure
+    | the `mode` option in the transmission settings. The available mode values are:
+    | - 'sync': Sends data immediately without buffering.
+    | - 'file': Stores data in files before sending it to Perfbase.
+    | - 'database': Caches data in a database table before sending.
+    |
+    | When using modes other than 'sync', data will be collected locally.
+    | To process and send this buffered data to Perfbase, use the `perfbase:sync`
+    | Artisan command. It’s recommended to set up a cron to periodically run it.
+    |
+    */
+    'sending' => [
+        'mode' => env('PERFBASE_SENDING_MODE', 'sync'),
+        'timeout' => env('PERFBASE_TIMEOUT', 10),
+        'proxy' => env('PERFBASE_PROXY', null),
         'config' => [
+            'sync' => [
+
+            ],
             'file' => [
                 'path' => storage_path('perfbase'),
             ],
@@ -29,7 +64,7 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Enable/Disable Profiling
+    | Enable/Disable Profiling - Used to control the profiler state.
     |--------------------------------------------------------------------------
     |
     | This option allows you to enable or disable the profiler. When disabled,
@@ -41,7 +76,7 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Profiler Features
+    | Profiler Features - Used to control the profiler features.
     |--------------------------------------------------------------------------
     |
     | This config allows you to control different features within the profiler.
@@ -65,14 +100,11 @@ return [
         'track_queues' => env('PERFBASE_TRACK_QUEUES', true),
         'track_aws_sdk' => env('PERFBASE_TRACK_AWS_SDK', true),
         'track_file_operations' => env('PERFBASE_TRACK_FILE_OPERATIONS', true),
-        'proxy' => env('PERFBASE_PROXY', null),
-        'timeout' => env('PERFBASE_TIMEOUT', 10),
-        'async_delivery' => env('PERFBASE_ASYNC', true),
     ],
 
     /*
     |--------------------------------------------------------------------------
-    | Perfbase Profiling - Include List
+    | Route Include List - Used to control which routes are profiled.
     |--------------------------------------------------------------------------
     |
     | This configuration determines which actions are included for profiling
@@ -140,7 +172,7 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Exclude List
+    | Route Exclude List - Used to control which routes are not profiled.
     |--------------------------------------------------------------------------
     |
     | If profiling is enabled, this option controls which actions are excluded.

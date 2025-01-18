@@ -3,7 +3,6 @@
 namespace Perfbase\Laravel\Middleware;
 
 use Closure;
-use Illuminate\Auth\Authenticatable;
 use Illuminate\Contracts\Container\BindingResolutionException;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Http\Request;
@@ -16,10 +15,12 @@ use Perfbase\Laravel\Events\PerfbaseProfilingStarted;
 use Perfbase\Laravel\Events\PerfbaseProfilingStarting;
 use Perfbase\Laravel\Interfaces\ProfiledUser;
 use Perfbase\SDK\Config as PerfbaseConfig;
+use Perfbase\SDK\Exception\PerfbaseApiKeyMissingException;
 use Perfbase\SDK\Exception\PerfbaseStateException;
 use Perfbase\SDK\Perfbase as PerfbaseClient;
 use Perfbase\SDK\Utils\EnvironmentUtils;
 use RuntimeException;
+use JsonException;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -35,19 +36,20 @@ class PerfbaseMiddleware
      * @param Request $request
      * @param Closure $next
      * @return mixed
-     * @throws PerfbaseStateException
      * @throws BindingResolutionException
+     * @throws PerfbaseStateException
+     * @throws PerfbaseApiKeyMissingException
+     * @throws JsonException
      */
     public function handle(Request $request, Closure $next)
     {
         // Check if profiling should occur for this request.
-        if (!$this->shouldProfile($request)) {
+        if (!$this->passesSampleRateCheck() || !$this->shouldProfile($request)) {
             return $next($request);
         }
 
         // Trigger pre-start event
         PerfbaseProfilingStarting::dispatch();
-
 
         /** @var Application $app */
         $app = app();
@@ -91,10 +93,15 @@ class PerfbaseMiddleware
             $instance->attributes->httpUrl = $request->fullUrl();
         }
 
-
         // Have we chosen to cache the profiling data for future sending
-        $cacheEnabled = config('perfbase.cache.enabled', false);
-        if ($cacheEnabled) {
+        $sendingMode = config('perfbase.sending.mode');
+        $shouldSendNow = $sendingMode === 'sync';
+        if (!in_array($sendingMode, ['sync', 'database', 'file'], true)) {
+            throw new RuntimeException('Invalid sending mode specified in the configuration.');
+        }
+
+        // If we're not sending the data now, store it for later.
+        if ($shouldSendNow === false) {
             // Yes, store it using the chosen strategy
             $cache = CacheStrategyFactory::make();
 
@@ -112,7 +119,6 @@ class PerfbaseMiddleware
         PerfbaseProfilingEnding::dispatch($instance);
 
         // Stop profiling and optionally send profiling data to Perfbase.
-        $shouldSendNow = $cacheEnabled === false;
         $instance->stopProfiling($shouldSendNow);
 
         // Trigger post-finish event
@@ -150,6 +156,29 @@ class PerfbaseMiddleware
         }
 
         return true;
+    }
+
+    /**
+     * Check if the sample rate is met for the current request.
+     * @return bool
+     */
+    private function passesSampleRateCheck(): bool {
+        // Grab the sample rate from the configuration
+        $sampleRate = config('perfbase.sample_rate');
+
+        // Check if the sample rate is a valid decimal between 0.0 and 1.0
+        if (!is_numeric($sampleRate) || $sampleRate < 0 || $sampleRate > 1) {
+            throw new RuntimeException('Configured perfbase `sample_rate` must be a decimal between 0.0 and 1.0.');
+        }
+
+        /**
+         * Generate a random decimal between 0.0 and 1.0
+         * @var double $randomDecimal
+         */
+        $randomDecimal = mt_rand() / mt_getrandmax();
+
+        // Check if the random decimal is less than or equal to the sample rate
+        return $randomDecimal <= $sampleRate;
     }
 
     private function shouldUserBeProfiled(Request $request): bool
