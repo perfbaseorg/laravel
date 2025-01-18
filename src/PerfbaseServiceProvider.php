@@ -2,7 +2,6 @@
 
 namespace Perfbase\Laravel;
 
-use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\ServiceProvider;
 use Perfbase\SDK\Config;
 
@@ -39,6 +38,12 @@ class PerfbaseServiceProvider extends ServiceProvider
             /** @var array<string, mixed> $features */
             $features = $config['perfbase.profiler_features'];
 
+            /** @var string|null $proxy */
+            $proxy = $config['perfbase.sending.proxy'];
+
+            /** @var numeric $timeout */
+            $timeout = $config['perfbase.sending.timeout'];
+
             /** @var string $apiKey */
             $apiKey = $config['perfbase.api_key'];
 
@@ -57,8 +62,8 @@ class PerfbaseServiceProvider extends ServiceProvider
                 'track_queues' => $features['track_queues'],
                 'track_aws_sdk' => $features['track_aws_sdk'],
                 'track_file_operations' => $features['track_file_operations'],
-                'proxy' => $features['proxy'],
-                'timeout' => $features['timeout'],
+                'proxy' => $proxy,
+                'timeout' => $timeout,
             ]);
         });
     }
