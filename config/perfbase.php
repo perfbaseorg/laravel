@@ -37,7 +37,7 @@ return [
     | disable the profiler in production or specific environments.
     |
     */
-    'enabled' => env('PERFBASE_ENABLED', true),
+    'enabled' => env('PERFBASE_ENABLED', false),
 
     /*
     |--------------------------------------------------------------------------
@@ -67,7 +67,7 @@ return [
         'track_file_operations' => env('PERFBASE_TRACK_FILE_OPERATIONS', true),
         'proxy' => env('PERFBASE_PROXY', null),
         'timeout' => env('PERFBASE_TIMEOUT', 10),
-        'async' => env('PERFBASE_ASYNC', true),
+        'async_delivery' => env('PERFBASE_ASYNC', true),
     ],
 
     /*

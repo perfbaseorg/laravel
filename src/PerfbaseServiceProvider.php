@@ -59,7 +59,7 @@ class PerfbaseServiceProvider extends ServiceProvider
                 'track_file_operations' => $features['track_file_operations'],
                 'proxy' => $features['proxy'],
                 'timeout' => $features['timeout'],
-                'async' => $features['async'],
+                'async_delivery' => $features['async_delivery'],
             ]);
         });
     }
