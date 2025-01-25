@@ -7,6 +7,7 @@ use Illuminate\Contracts\Container\BindingResolutionException;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Route;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Auth;
 use Perfbase\Laravel\Caching\CacheStrategyFactory;
 use Perfbase\Laravel\Events\PerfbaseProfilingEnded;
@@ -16,6 +17,8 @@ use Perfbase\Laravel\Events\PerfbaseProfilingStarting;
 use Perfbase\Laravel\Interfaces\ProfiledUser;
 use Perfbase\SDK\Config as PerfbaseConfig;
 use Perfbase\SDK\Exception\PerfbaseApiKeyMissingException;
+use Perfbase\SDK\Exception\PerfbaseEncodingException;
+use Perfbase\SDK\Exception\PerfbaseInvalidConfigException;
 use Perfbase\SDK\Exception\PerfbaseStateException;
 use Perfbase\SDK\Perfbase as PerfbaseClient;
 use Perfbase\SDK\Utils\EnvironmentUtils;
@@ -37,9 +40,10 @@ class PerfbaseMiddleware
      * @param Closure $next
      * @return mixed
      * @throws BindingResolutionException
-     * @throws PerfbaseStateException
-     * @throws PerfbaseApiKeyMissingException
      * @throws JsonException
+     * @throws PerfbaseStateException
+     * @throws PerfbaseEncodingException
+     * @throws PerfbaseInvalidConfigException
      */
     public function handle(Request $request, Closure $next)
     {
@@ -230,21 +234,31 @@ class PerfbaseMiddleware
      */
     private function getRequestComponents(Request $request): array
     {
-        $components = [
-            sprintf("%s %s", $request->method(), $request->path()), // GET /path
-            $request->path() // /path
-        ];
-        $route = $request->route();
 
+        // Request based components
+        $pathWithSlash = '/' . ltrim($request->path(), '/');
+        $components = [
+            sprintf("%s %s", $request->method(), $pathWithSlash), // GET /path
+            sprintf("%s %s", $request->method(), $request->path()), // GET path
+            $request->path(), // path
+            $pathWithSlash // /path
+        ];
+
+        // Route based components
+        $route = $request->route();
         if ($route instanceof Route) {
-            $actionName = $route->getActionName();
-            $components[] = $actionName; // Controller@method string.
-            $actionNameParts = explode('@', $actionName);
-            foreach ($actionNameParts as $key => $part) {
-                $components[] = $part;
+
+            $explodedAction = explode('@', $route->getActionName());
+            $components[] = $route->getActionName(); // Controller@method string.
+            $components[] = $route->uri(); // path
+            $components[] = '/' . ltrim($route->uri(), '/'); // /path
+            $components[] = $explodedAction[0]; // Controller
+
+            /** @var string $method */
+            foreach($route->methods() as $method) {
+                $components[] = sprintf("%s %s", $method, $route->uri()); // GET path
+                $components[] = sprintf("%s %s", $method, '/' . ltrim($route->uri(), '/')); // GET /path
             }
-        } else {
-            $components[] = 'Closure'; // No route, likely a closure.
         }
 
         return $components;

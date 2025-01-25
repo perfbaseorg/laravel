@@ -33,6 +33,11 @@
       "Perfbase\\Laravel\\": "src/"
     }
   },
+  "scripts": {
+    "lint": "composer run-script phpstan && composer run-script test",
+    "test": "phpunit",
+    "phpstan": "phpstan analyse --memory-limit=2G"
+  },
   "extra": {
     "laravel": {
       "providers": [
