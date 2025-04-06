@@ -7,23 +7,15 @@ use Illuminate\Contracts\Container\BindingResolutionException;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Route;
-use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Auth;
+use JsonException;
 use Perfbase\Laravel\Caching\CacheStrategyFactory;
-use Perfbase\Laravel\Events\PerfbaseProfilingEnded;
-use Perfbase\Laravel\Events\PerfbaseProfilingEnding;
-use Perfbase\Laravel\Events\PerfbaseProfilingStarted;
-use Perfbase\Laravel\Events\PerfbaseProfilingStarting;
 use Perfbase\Laravel\Interfaces\ProfiledUser;
-use Perfbase\SDK\Config as PerfbaseConfig;
-use Perfbase\SDK\Exception\PerfbaseApiKeyMissingException;
-use Perfbase\SDK\Exception\PerfbaseEncodingException;
-use Perfbase\SDK\Exception\PerfbaseInvalidConfigException;
-use Perfbase\SDK\Exception\PerfbaseStateException;
+use Perfbase\SDK\Exception\PerfbaseExtensionException;
+use Perfbase\SDK\Exception\PerfbaseInvalidSpanException;
 use Perfbase\SDK\Perfbase as PerfbaseClient;
 use Perfbase\SDK\Utils\EnvironmentUtils;
 use RuntimeException;
-use JsonException;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -41,9 +33,8 @@ class PerfbaseMiddleware
      * @return mixed
      * @throws BindingResolutionException
      * @throws JsonException
-     * @throws PerfbaseStateException
-     * @throws PerfbaseEncodingException
-     * @throws PerfbaseInvalidConfigException
+     * @throws PerfbaseExtensionException
+     * @throws PerfbaseInvalidSpanException
      */
     public function handle(Request $request, Closure $next)
     {
@@ -52,56 +43,58 @@ class PerfbaseMiddleware
             return $next($request);
         }
 
-        // Trigger pre-start event
-        PerfbaseProfilingStarting::dispatch();
-
         /** @var Application $app */
         $app = app();
 
-        /** @var PerfbaseConfig $config */
-        $config = $app->make(PerfbaseConfig::class);
+        // Create a new instance of the Perfbase client.
+        /** @var PerfbaseClient $instance */
+        $instance = $app->make(PerfbaseClient::class);
 
-        // Start a new perfbase instance
-        $instance = PerfbaseClient::createInstance($config);
-
-        $instance->startProfiling();
-
-        // Trigger pre-start event
-        PerfbaseProfilingStarted::dispatch($instance);
+        // Start profiling the request.
+        $instance->startTraceSpan('laravel');
 
         // Proceed with the request and capture the response.
         $response = $next($request);
 
+        // Get the route information from the request.
         $route = $request->route();
 
         // Get the route method and URI if available.
         if ($route instanceof Route) {
-            $instance->attributes->action = sprintf(
-                '%s %s',
-                $request->getMethod(),
-                $route->uri()
-            );
+            perfbase_set_attribute('action', $route->getActionName());
         } else {
             // Help! Need to know what else $route could be.
             throw new RuntimeException('Route information is not available.');
         }
 
+        /*
+         * Set attributes for the profiling data.
+         * These attributes will be sent to Perfbase.
+         * @var array<string, string> $attributes
+         */
+        $attributes = [
+            'userIp' => EnvironmentUtils::getUserIp(),
+            'userAgent' => EnvironmentUtils::getUserUserAgent(),
+            'hostname' => gethostname(),
+            'appVersion' => 'untracked', //TODO
+            'phpVersion' => phpversion(),
+            'httpMethod', $request->method()
+        ];
+
         // Set user-related attributes if the user is authenticated.
         if (Auth::check()) {
-            $instance->attributes->userId = (string) Auth::id();
+            $attributes['user'] = Auth::id();
         }
-
-        $instance->attributes->userIp = EnvironmentUtils::getUserIp();
-        $instance->attributes->userAgent = EnvironmentUtils::getUserUserAgent();
-        $instance->attributes->hostname = EnvironmentUtils::getHostname();
-        $instance->attributes->appVersion = "untracked"; // TODO
-        $instance->attributes->phpVersion = phpversion();
-        $instance->attributes->httpMethod = $request->method();
 
         // Set HTTP status code and URL if available.
         if ($response instanceof Response) {
-            $instance->attributes->httpStatusCode = $response->getStatusCode();
-            $instance->attributes->httpUrl = $request->fullUrl();
+            $attributes['httpStatusCode'] = $response->getStatusCode();
+            $attributes['httpUrl'] = $request->fullUrl();
+        }
+
+        // Apply any additional attributes from the configuration.
+        foreach($attributes as $key => $value) {
+            perfbase_set_attribute((string) $key, (string)$value);
         }
 
         // Have we chosen to cache the profiling data for future sending
@@ -111,31 +104,50 @@ class PerfbaseMiddleware
             throw new RuntimeException('Invalid sending mode specified in the configuration.');
         }
 
-        // If we're not sending the data now, store it for later.
-        if ($shouldSendNow === false) {
-            // Yes, store it using the chosen strategy
+        // Stop profiling
+        $instance->stopTraceSpan('laravel');
+
+        // Check if we should send the data now or store it for later.
+        if ($shouldSendNow === true) {
+            // Send the data immediately
+            $instance->submitTrace();
+        } else {
+            // Store it using the chosen strategy
             $cache = CacheStrategyFactory::make();
 
-            // Transform the data
-            $data = $instance->transformData();
-
-            // Add the created_at timestamp
-            $data['created_at'] = now()->toDateTimeString();
-
             // Store the data
-            $cache->store($data);
+            $cache->store([
+                'data' => $instance->getTraceData(),
+                'created_at' => now()->toDateTimeString(),
+            ]);
         }
 
-        // Trigger pre-finish event
-        PerfbaseProfilingEnding::dispatch($instance);
-
-        // Stop profiling and optionally send profiling data to Perfbase.
-        $instance->stopProfiling($shouldSendNow);
-
-        // Trigger post-finish event
-        PerfbaseProfilingEnded::dispatch($instance);
-
+        // Return the response to the client.
         return $response;
+    }
+
+    /**
+     * Check if the sample rate is met for the current request.
+     * @return bool
+     */
+    private function passesSampleRateCheck(): bool
+    {
+        // Grab the sample rate from the configuration
+        $sampleRate = config('perfbase.sample_rate');
+
+        // Check if the sample rate is a valid decimal between 0.0 and 1.0
+        if (!is_numeric($sampleRate) || $sampleRate < 0 || $sampleRate > 1) {
+            throw new RuntimeException('Configured perfbase `sample_rate` must be a decimal between 0.0 and 1.0.');
+        }
+
+        /**
+         * Generate a random decimal between 0.0 and 1.0
+         * @var double $randomDecimal
+         */
+        $randomDecimal = mt_rand() / mt_getrandmax();
+
+        // Check if the random decimal is less than or equal to the sample rate
+        return $randomDecimal <= $sampleRate;
     }
 
     /**
@@ -170,28 +182,10 @@ class PerfbaseMiddleware
     }
 
     /**
-     * Check if the sample rate is met for the current request.
+     * Check if the user should be profiled.
+     * @param Request $request
      * @return bool
      */
-    private function passesSampleRateCheck(): bool {
-        // Grab the sample rate from the configuration
-        $sampleRate = config('perfbase.sample_rate');
-
-        // Check if the sample rate is a valid decimal between 0.0 and 1.0
-        if (!is_numeric($sampleRate) || $sampleRate < 0 || $sampleRate > 1) {
-            throw new RuntimeException('Configured perfbase `sample_rate` must be a decimal between 0.0 and 1.0.');
-        }
-
-        /**
-         * Generate a random decimal between 0.0 and 1.0
-         * @var double $randomDecimal
-         */
-        $randomDecimal = mt_rand() / mt_getrandmax();
-
-        // Check if the random decimal is less than or equal to the sample rate
-        return $randomDecimal <= $sampleRate;
-    }
-
     private function shouldUserBeProfiled(Request $request): bool
     {
         // Check if the user should be profiled. We expose a trait to allow for custom logic.
@@ -208,11 +202,14 @@ class PerfbaseMiddleware
             }
         }
 
-
-
         return true;
     }
 
+    /**
+     * Check if the route should be profiled based on include and exclude filters.
+     * @param Request $request
+     * @return bool
+     */
     private function shouldRouteBeProfiled(Request $request): bool
     {
         // Gather profiling components (path, controller, method).
@@ -255,7 +252,7 @@ class PerfbaseMiddleware
             $components[] = $explodedAction[0]; // Controller
 
             /** @var string $method */
-            foreach($route->methods() as $method) {
+            foreach ($route->methods() as $method) {
                 $components[] = sprintf("%s %s", $method, $route->uri()); // GET path
                 $components[] = sprintf("%s %s", $method, '/' . ltrim($route->uri(), '/')); // GET /path
             }
@@ -301,7 +298,6 @@ class PerfbaseMiddleware
      *
      * @param array<string> $components The list of components to be matched against the filters.
      * @param array<string> $filters The list of filters to apply.
-     *
      * @return bool Returns true if any component matches any filter; otherwise, false.
      */
     public static function matchesFilters(array $components, array $filters): bool
@@ -333,7 +329,6 @@ class PerfbaseMiddleware
      * Determines if the provided filter is a match-all wildcard.
      *
      * @param string $filter The filter string to evaluate.
-     *
      * @return bool Returns true if the filter is "*"; otherwise, false.
      */
     private static function isMatchAllWildcard(string $filter): bool
@@ -345,7 +340,6 @@ class PerfbaseMiddleware
      * Constructs a regex pattern based on the provided filter.
      *
      * @param string $filter The filter string used to build the regex pattern.
-     *
      * @return string The constructed regex pattern.
      */
     private static function constructRegexFromFilter(string $filter): string
@@ -377,7 +371,6 @@ class PerfbaseMiddleware
      * Determines if the filter is a regex pattern.
      *
      * @param string $filter The filter string to evaluate.
-     *
      * @return bool Returns true if the filter is enclosed with "/", indicating a regex; otherwise, false.
      */
     private static function isRegexFilter(string $filter): bool
@@ -389,7 +382,6 @@ class PerfbaseMiddleware
      * Determines if the filter contains a wildcard character "*".
      *
      * @param string $filter The filter string to evaluate.
-     *
      * @return bool Returns true if the filter contains "*"; otherwise, false.
      */
     private static function containsWildcard(string $filter): bool
@@ -401,7 +393,6 @@ class PerfbaseMiddleware
      * Determines if the filter contains a namespace separator "\\".
      *
      * @param string $filter The filter string to evaluate.
-     *
      * @return bool Returns true if the filter contains "\\"; otherwise, false.
      */
     private static function containsNamespaceSeparator(string $filter): bool

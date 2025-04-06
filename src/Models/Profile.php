@@ -17,43 +17,6 @@ class Profile extends Model
     ];
 
     /**
-     * @param string $input
-     * @return array<string, mixed>
-     */
-    public static function decode(string $input): array
-    {
-
-        $gz = gzdecode(base64_decode($input));
-        if ($gz === false) {
-            throw new RuntimeException('Failed to decompress data');
-        }
-
-        /** @var array<string, mixed> $value */
-        $value = unserialize($gz);
-
-        if (!is_array($value)) {
-            throw new RuntimeException('Corrupted data');
-        }
-
-        return $value;
-    }
-
-    /**
-     * @param array<string, mixed> $input
-     * @return string
-     */
-    public static function encode(array $input): string
-    {
-        $gz = gzencode(serialize($input));
-
-        if ($gz === false) {
-            throw new RuntimeException('Failed to compress data');
-        }
-
-        return base64_encode($gz);
-    }
-
-    /**
      * Get the database connection for the model.
      *
      * @return string
@@ -81,4 +44,32 @@ class Profile extends Model
 
         return $table;
     }
+
+    /**
+     * Encode the data attribute into a base64 string before saving to the database.
+     * This is done because the data is in binary format.
+     *
+     * @param string $value
+     * @return void
+     */
+    public function setDataAttribute(string $value): void
+    {
+        $this->attributes['data'] = base64_encode($value);
+    }
+
+    /**
+     * Decode the data attribute back into binary data.
+     *
+     * @return string
+     */
+    public function getDataAttribute(): string
+    {
+        $data = $this->attributes['data'];
+        if (!is_string($data)) {
+            throw new RuntimeException('Invalid data attribute');
+        }
+
+        return base64_decode($data);
+    }
+
 }

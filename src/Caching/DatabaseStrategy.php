@@ -4,7 +4,6 @@ namespace Perfbase\Laravel\Caching;
 
 use Illuminate\Database\Eloquent\Collection;
 use Perfbase\Laravel\Models\Profile;
-use RuntimeException;
 
 class DatabaseStrategy implements CacheStrategy
 {
@@ -53,7 +52,7 @@ class DatabaseStrategy implements CacheStrategy
             $yield = [];
 
             /** @var Profile $profile */
-            foreach($profiles as $profile) {
+            foreach ($profiles as $profile) {
 
                 /** @var int $id */
                 $id = $profile->getAttribute('id');

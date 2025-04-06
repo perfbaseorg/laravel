@@ -2,8 +2,12 @@
 
 namespace Perfbase\Laravel;
 
+use Illuminate\Foundation\Application;
 use Illuminate\Support\ServiceProvider;
 use Perfbase\SDK\Config;
+use Perfbase\SDK\Config as PerfbaseConfig;
+use Perfbase\SDK\Perfbase;
+use Perfbase\SDK\Perfbase as PerfbaseClient;
 
 class PerfbaseServiceProvider extends ServiceProvider
 {
@@ -35,8 +39,8 @@ class PerfbaseServiceProvider extends ServiceProvider
              */
             $config = $app['config'];
 
-            /** @var array<string, mixed> $features */
-            $features = $config['perfbase.profiler_features'];
+            /** @var int $flags */
+            $flags = $config['perfbase.flags'];
 
             /** @var string|null $proxy */
             $proxy = $config['perfbase.sending.proxy'];
@@ -49,22 +53,19 @@ class PerfbaseServiceProvider extends ServiceProvider
 
             return Config::fromArray([
                 'api_key' => $apiKey,
-                'ignored_functions' => $features['ignored_functions'],
-                'use_coarse_clock' => $features['use_coarse_clock'],
-                'track_file_compilation' => $features['track_file_compilation'],
-                'track_memory_allocation' => $features['track_memory_allocation'],
-                'track_cpu_time' => $features['track_cpu_time'],
-                'track_pdo' => $features['track_pdo'],
-                'track_http' => $features['track_http'],
-                'track_caches' => $features['track_caches'],
-                'track_mongodb' => $features['track_mongodb'],
-                'track_elasticsearch' => $features['track_elasticsearch'],
-                'track_queues' => $features['track_queues'],
-                'track_aws_sdk' => $features['track_aws_sdk'],
-                'track_file_operations' => $features['track_file_operations'],
+                'flags' => $flags,
                 'proxy' => $proxy,
                 'timeout' => $timeout,
             ]);
+        });
+
+        $this->app->singleton(Perfbase::class, function (Application $app) {
+
+            /** @var PerfbaseConfig $config */
+            $config = $app->make(PerfbaseConfig::class);
+
+            // Start a new perfbase instance
+            return new PerfbaseClient($config);
         });
     }
 }

@@ -76,7 +76,7 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Profiler Features - Used to control the profiler features.
+    | Profiler Flags - Used to control the profiler features.
     |--------------------------------------------------------------------------
     |
     | This config allows you to control different features within the profiler.
@@ -86,21 +86,7 @@ return [
     | The README.md contains all the details about each feature.
     |
     */
-    'profiler_features' => [
-        'ignored_functions' => env('PERFBASE_IGNORED_FUNCTIONS', []),
-        'use_coarse_clock' => env('PERFBASE_USE_COARSE_CLOCK', false),
-        'track_file_compilation' => env('PERFBASE_TRACK_FILE_COMPILATION', true),
-        'track_memory_allocation' => env('PERFBASE_TRACK_MEMORY_ALLOCATION', false),
-        'track_cpu_time' => env('PERFBASE_TRACK_CPU_TIME', true),
-        'track_pdo' => env('PERFBASE_TRACK_PDO', true),
-        'track_http' => env('PERFBASE_TRACK_HTTP', true),
-        'track_caches' => env('PERFBASE_TRACK_CACHES', true),
-        'track_mongodb' => env('PERFBASE_TRACK_MONGODB', true),
-        'track_elasticsearch' => env('PERFBASE_TRACK_ELASTICSEARCH', true),
-        'track_queues' => env('PERFBASE_TRACK_QUEUES', true),
-        'track_aws_sdk' => env('PERFBASE_TRACK_AWS_SDK', true),
-        'track_file_operations' => env('PERFBASE_TRACK_FILE_OPERATIONS', true),
-    ],
+    'flags' => \Perfbase\SDK\FeatureFlags::DefaultFlags,
 
     /*
     |--------------------------------------------------------------------------
