@@ -63,7 +63,6 @@ class DatabaseStrategy implements CacheStrategy
                 /** @var string $created_at */
                 $created_at = $profile->getAttribute('created_at');
 
-
                 $yield[] = [
                     'id' => $id,
                     'data' => $data,

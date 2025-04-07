@@ -36,6 +36,7 @@ class PerfbaseMiddleware
      * @throws JsonException
      * @throws PerfbaseExtensionException
      * @throws PerfbaseInvalidSpanException
+     * @throws PerfbaseException
      */
     public function handle(Request $request, Closure $next)
     {
@@ -117,7 +118,7 @@ class PerfbaseMiddleware
 
         // Apply any additional attributes from the configuration.
         foreach($attributes as $key => $value) {
-            perfbase_set_attribute((string) $key, (string)$value);
+            perfbase_set_attribute($key, (string)$value);
         }
 
         // Have we chosen to cache the profiling data for future sending
