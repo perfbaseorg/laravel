@@ -56,30 +56,31 @@ class PerfbaseMiddleware
         // Proceed with the request and capture the response.
         $response = $next($request);
 
+        /*
+        * Set attributes for the profiling data.
+        * These attributes will be sent to Perfbase.
+        * @var array<string, string> $attributes
+        */
+        $attributes = [
+            'user_ip' => EnvironmentUtils::getUserIp(),
+            'user_agent' => EnvironmentUtils::getUserUserAgent(),
+            'hostname' => gethostname() ?? '',
+            'environment' => config('app.env', ''),
+            'app_version' => config('app.version', ''),
+            'php_version' => phpversion() ?? '',
+            'http_method' => $request->method()
+        ];
+
         // Get the route information from the request.
         $route = $request->route();
 
         // Get the route method and URI if available.
         if ($route instanceof Route) {
-            perfbase_set_attribute('action', $route->getActionName());
+            $attributes['action'] = sprintf('%s %s', $request->method(), $route->uri());
         } else {
             // Help! Need to know what else $route could be.
             throw new RuntimeException('Route information is not available.');
         }
-
-        /*
-         * Set attributes for the profiling data.
-         * These attributes will be sent to Perfbase.
-         * @var array<string, string> $attributes
-         */
-        $attributes = [
-            'userIp' => EnvironmentUtils::getUserIp(),
-            'userAgent' => EnvironmentUtils::getUserUserAgent(),
-            'hostname' => gethostname(),
-            'appVersion' => 'untracked', //TODO
-            'phpVersion' => phpversion(),
-            'httpMethod', $request->method()
-        ];
 
         // Set user-related attributes if the user is authenticated.
         if (Auth::check()) {
@@ -88,8 +89,8 @@ class PerfbaseMiddleware
 
         // Set HTTP status code and URL if available.
         if ($response instanceof Response) {
-            $attributes['httpStatusCode'] = $response->getStatusCode();
-            $attributes['httpUrl'] = $request->fullUrl();
+            $attributes['http_status_code'] = $response->getStatusCode();
+            $attributes['http_url'] = $request->fullUrl();
         }
 
         // Apply any additional attributes from the configuration.
@@ -375,7 +376,7 @@ class PerfbaseMiddleware
      */
     private static function isRegexFilter(string $filter): bool
     {
-        return str_starts_with($filter, '/') && str_ends_with($filter, '/');
+        return substr($filter, 0, 1) === '/' && substr($filter, -1) === '/';
     }
 
     /**
@@ -386,7 +387,7 @@ class PerfbaseMiddleware
      */
     private static function containsWildcard(string $filter): bool
     {
-        return str_contains($filter, '*');
+        return strpos($filter, '*') !== false;
     }
 
     /**
@@ -397,7 +398,7 @@ class PerfbaseMiddleware
      */
     private static function containsNamespaceSeparator(string $filter): bool
     {
-        return str_contains($filter, '\\');
+        return strpos($filter, '\\') !== false;
     }
 
     /**
