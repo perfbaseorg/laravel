@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Auth;
 use JsonException;
 use Perfbase\Laravel\Caching\CacheStrategyFactory;
 use Perfbase\Laravel\Interfaces\ProfiledUser;
+use Perfbase\SDK\Exception\PerfbaseException;
 use Perfbase\SDK\Exception\PerfbaseExtensionException;
 use Perfbase\SDK\Exception\PerfbaseInvalidSpanException;
 use Perfbase\SDK\Perfbase as PerfbaseClient;
@@ -56,6 +57,27 @@ class PerfbaseMiddleware
         // Proceed with the request and capture the response.
         $response = $next($request);
 
+
+        $environment = config('app.env', '');
+        if (!is_string($environment)) {
+            throw new PerfbaseException('Config perfbase `app.env` must be a string.');
+        }
+
+        $appVersion = config('app.version', '');
+        if (!is_string($appVersion)) {
+            throw new PerfbaseException('Config `app.version` must be a string.');
+        }
+
+        $hostname = gethostname();
+        if (!is_string($hostname)) {
+            $hostname = '';
+        }
+
+        $phpVersion = phpversion();
+        if (!is_string($phpVersion)) {
+            $phpVersion = '';
+        }
+
         /*
         * Set attributes for the profiling data.
         * These attributes will be sent to Perfbase.
@@ -64,10 +86,10 @@ class PerfbaseMiddleware
         $attributes = [
             'user_ip' => EnvironmentUtils::getUserIp(),
             'user_agent' => EnvironmentUtils::getUserUserAgent(),
-            'hostname' => gethostname() ?? '',
-            'environment' => config('app.env', ''),
-            'app_version' => config('app.version', ''),
-            'php_version' => phpversion() ?? '',
+            'hostname' => $hostname,
+            'environment' => $environment,
+            'app_version' => $appVersion,
+            'php_version' => $phpVersion,
             'http_method' => $request->method()
         ];
 
