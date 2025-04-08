@@ -26,7 +26,7 @@ class QueueProfiler extends AbstractProfiler
      */
     public function __construct(Job $job, string $jobName)
     {
-        parent::__construct(app(), 'queue');
+        parent::__construct('queue');
         $this->job = $job;
         $this->jobName = $jobName;
     }

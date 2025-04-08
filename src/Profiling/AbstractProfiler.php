@@ -3,7 +3,6 @@
 namespace Perfbase\Laravel\Profiling;
 
 use Illuminate\Contracts\Container\BindingResolutionException;
-use Illuminate\Contracts\Foundation\Application;
 use JsonException;
 use Perfbase\Laravel\Caching\CacheStrategyFactory;
 use Perfbase\SDK\Exception\PerfbaseException;
@@ -18,9 +17,6 @@ abstract class AbstractProfiler
     /** @var PerfbaseClient */
     protected PerfbaseClient $perfbase;
 
-    /** @var Application */
-    protected Application $app;
-
     /** @var array<string, string> */
     protected array $attributes = [];
 
@@ -30,23 +26,21 @@ abstract class AbstractProfiler
     /**
      * @throws BindingResolutionException
      */
-    public function __construct(Application $app, string $spanName)
+    public function __construct(string $spanName)
     {
-        $this->app = $app;
         $this->spanName = $spanName;
-        $this->perfbase = $this->getPerfbaseClient($app);
+        $this->perfbase = $this->getPerfbaseClient();
     }
 
     /**
      * Get the Perfbase client instance
      *
-     * @param Application $app
      * @return PerfbaseClient
      * @throws BindingResolutionException
      */
-    private function getPerfbaseClient(Application $app): PerfbaseClient
+    private function getPerfbaseClient(): PerfbaseClient
     {
-        $client = $app->make(PerfbaseClient::class);
+        $client = app()->make(PerfbaseClient::class);
 
         if (!$client instanceof PerfbaseClient) {
             throw new RuntimeException('Perfbase client is not properly configured.');

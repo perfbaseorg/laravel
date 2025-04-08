@@ -30,7 +30,7 @@ class ConsoleProfiler extends AbstractProfiler
      */
     public function __construct($command, InputInterface $input, OutputInterface $output)
     {
-        parent::__construct(app(), 'console');
+        parent::__construct('console');
         $this->command = $command;
         $this->input = $input;
         $this->output = $output;

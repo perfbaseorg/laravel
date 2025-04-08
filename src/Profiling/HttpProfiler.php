@@ -2,6 +2,7 @@
 
 namespace Perfbase\Laravel\Profiling;
 
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Route;
 use Illuminate\Support\Facades\Auth;
@@ -22,7 +23,7 @@ class HttpProfiler extends AbstractProfiler
 
     public function __construct(Request $request)
     {
-        parent::__construct(app(), 'http');
+        parent::__construct('http');
         $this->request = $request;
     }
 
@@ -47,8 +48,12 @@ class HttpProfiler extends AbstractProfiler
             return false;
         }
 
+
+        /** @var Authenticatable $user */
+        $user = $this->request->user();
+
         // Check if the user should be profiled
-        if (!$this->shouldUserBeProfiled()) {
+        if (!$this->shouldUserBeProfiled($user)) {
             return false;
         }
 
@@ -91,13 +96,10 @@ class HttpProfiler extends AbstractProfiler
      * Check if the user should be profiled.
      * @return bool
      */
-    private function shouldUserBeProfiled(): bool
+    private function shouldUserBeProfiled(Authenticatable $user): bool
     {
-        /** @var ProfiledUser $user */
-        $user = $this->request->user();
-
         // Check if the user is authenticated and implements the ProfiledUser interface
-        if ($user && method_exists($user, 'shouldBeProfiled')) {
+        if (method_exists($user, 'shouldBeProfiled')) {
             return $user->shouldBeProfiled();
         }
 
@@ -201,14 +203,14 @@ class HttpProfiler extends AbstractProfiler
      * @param array<string> $filters The list of filters to apply.
      * @return bool Returns true if any component matches any filter; otherwise, false.
      */
-    private function matchesFilters(array $components, array $filters): bool
+    public static function matchesFilters(array $components, array $filters): bool
     {
         foreach ($filters as $filter) {
-            if ($this->isMatchAllWildcard($filter)) {
+            if (self::isMatchAllWildcard($filter)) {
                 return true;
             }
 
-            $regex = $this->constructRegexFromFilter($filter);
+            $regex = self::constructRegexFromFilter($filter);
             foreach ($components as $component) {
                 if (preg_match($regex, $component)) {
                     return true;
@@ -225,7 +227,7 @@ class HttpProfiler extends AbstractProfiler
      * @param string $filter The filter string to evaluate.
      * @return bool Returns true if the filter is "*"; otherwise, false.
      */
-    private function isMatchAllWildcard(string $filter): bool
+    private static function isMatchAllWildcard(string $filter): bool
     {
         return $filter === '*' || $filter === '.*';
     }
@@ -236,22 +238,22 @@ class HttpProfiler extends AbstractProfiler
      * @param string $filter The filter string used to build the regex pattern.
      * @return string The constructed regex pattern.
      */
-    private function constructRegexFromFilter(string $filter): string
+    private static function constructRegexFromFilter(string $filter): string
     {
         // **Regex Filter:** If the filter starts and ends with "/", treat it as a regex
-        if ($this->isRegexFilter($filter)) {
+        if (self::isRegexFilter($filter)) {
             return $filter;
         }
 
         $escapedFilter = preg_quote($filter, '/');
 
         // **Wildcard Filter:** Convert wildcard "*" to ".*" in regex
-        if ($this->containsWildcard($filter)) {
+        if (self::containsWildcard($filter)) {
             return '/^' . str_replace('\*', '.*', $escapedFilter) . '$/';
         }
 
         // **Namespace Prefix Filter:** If the filter contains "\", treat it as a namespace prefix
-        if ($this->containsNamespaceSeparator($filter)) {
+        if (self::containsNamespaceSeparator($filter)) {
             return '/^' . $escapedFilter . '.*$/';
         }
 
@@ -265,7 +267,7 @@ class HttpProfiler extends AbstractProfiler
      * @param string $filter The filter string to evaluate.
      * @return bool Returns true if the filter is enclosed with "/", indicating a regex; otherwise, false.
      */
-    private function isRegexFilter(string $filter): bool
+    private static function isRegexFilter(string $filter): bool
     {
         return substr($filter, 0, 1) === '/' && substr($filter, -1) === '/';
     }
@@ -276,7 +278,7 @@ class HttpProfiler extends AbstractProfiler
      * @param string $filter The filter string to evaluate.
      * @return bool Returns true if the filter contains "*"; otherwise, false.
      */
-    private function containsWildcard(string $filter): bool
+    private static function containsWildcard(string $filter): bool
     {
         return strpos($filter, '*') !== false;
     }
@@ -287,7 +289,7 @@ class HttpProfiler extends AbstractProfiler
      * @param string $filter The filter string to evaluate.
      * @return bool Returns true if the filter contains "\\"; otherwise, false.
      */
-    private function containsNamespaceSeparator(string $filter): bool
+    private static function containsNamespaceSeparator(string $filter): bool
     {
         return strpos($filter, '\\') !== false;
     }
