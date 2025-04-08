@@ -4,6 +4,17 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Perfbase Configuration
+    |--------------------------------------------------------------------------
+    |
+    | This file is for configuring the Perfbase APM integration for Laravel.
+    | You can enable/disable profiling, set sampling rates, and configure
+    | which routes, jobs, and commands should be profiled.
+    |
+    */
+
+    /*
+    |--------------------------------------------------------------------------
     | Enable/Disable Profiling - Used to control the profiler state.
     |--------------------------------------------------------------------------
     |
@@ -53,17 +64,15 @@ return [
     |
     | When using modes other than 'sync', data will be collected locally.
     | To process and send this buffered data to Perfbase, use the `perfbase:sync`
-    | Artisan command. It’s recommended to set up a cron to periodically run it.
+    | Artisan command. It's recommended to set up a cron to periodically run it.
     |
     */
     'sending' => [
         'mode' => env('PERFBASE_SENDING_MODE', 'sync'),
-        'timeout' => env('PERFBASE_TIMEOUT', 10),
-        'proxy' => env('PERFBASE_PROXY', null),
+        'timeout' => env('PERFBASE_TIMEOUT', 5),
+        'proxy' => env('PERFBASE_PROXY'),
         'config' => [
-            'sync' => [
-
-            ],
+            'sync' => [],
             'file' => [
                 'path' => storage_path('perfbase'),
             ],
@@ -86,7 +95,7 @@ return [
     | The README.md contains all the details about each feature.
     |
     */
-    'flags' => \Perfbase\SDK\FeatureFlags::DefaultFlags,
+    'flags' => env('PERFBASE_FLAGS', \Perfbase\SDK\FeatureFlags::DefaultFlags),
 
     /*
     |--------------------------------------------------------------------------
