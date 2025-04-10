@@ -91,7 +91,7 @@ class PerfbaseSyncCommand extends Command
                             throw new RuntimeException(sprintf('Found invalid `id` for profile ID: %s', $traceId));
                         }
 
-                        /** @var array<mixed> $traceData */
+                        /** @var string $traceData */
                         $traceData = $profile['data'];
                         if (!is_array($traceData)) {
                             throw new RuntimeException(sprintf('Found invalid `data` for profile ID: %s', $traceId));
@@ -135,7 +135,6 @@ class PerfbaseSyncCommand extends Command
             $this->error($e->getMessage());
             return self::FAILURE;
         } finally {
-
             // Finish up transaction if using database strategy
             if ($strategy === 'database') {
                 // Finish up transaction

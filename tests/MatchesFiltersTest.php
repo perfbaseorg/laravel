@@ -1,6 +1,6 @@
 <?php
 
-use Perfbase\Laravel\Middleware\PerfbaseMiddleware;
+use Perfbase\Laravel\Profiling\HttpProfiler;
 use PHPUnit\Framework\TestCase;
 
 class MatchesFiltersTest extends TestCase
@@ -69,7 +69,7 @@ class MatchesFiltersTest extends TestCase
 
         // Run each test case
         foreach ($testCases as $case) {
-            $result = PerfbaseMiddleware::matchesFilters($components, $case['filters']);
+            $result = HttpProfiler::matchesFilters($components, $case['filters']);
             $this->assertSame($case['expected'], $result, 'Failed matching filters: "' . implode('" and "', $case['filters']) . '" against "' . implode('", "', $components) . '"');
         }
     }

@@ -27,7 +27,7 @@ class FileStrategy implements CacheStrategy
      */
     public function __construct()
     {
-        $path = config('perfbase.connections.file.path');
+        $path = config('perfbase.sending.config.file.path');
         if (!is_string($path)) {
             throw new InvalidArgumentException('The file cache path must be a string');
         }

@@ -30,7 +30,7 @@ jobs:
         run: composer install --prefer-dist --no-progress
 
       - name: Run PHPStan
-        run: vendor/bin/phpstan analyse -c phpstan.neon
+        run: vendor/bin/phpstan analyse -c phpstan.neon --memory-limit=1G
 
       - name: Run PHPUnit tests
         run: ./vendor/bin/phpunit

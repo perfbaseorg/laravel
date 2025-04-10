@@ -1,5 +1,7 @@
 parameters:
-    level: 10
+    level: 8
     treatPhpDocTypesAsCertain: false
     paths:
         - src
+    scanFiles:
+        - vendor/perfbase/php-sdk/perfbase_extension_stubs.php

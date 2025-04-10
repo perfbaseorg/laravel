@@ -13,7 +13,7 @@ class CacheStrategyFactory
      */
     public static function make(): CacheStrategy
     {
-        switch (config('perfbase.cache.enabled')) {
+        switch (config('perfbase.sending.mode')) {
             case 'database':
                 return new DatabaseStrategy();
             case 'file':
