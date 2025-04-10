@@ -19,7 +19,7 @@
     "ext-json": "*",
     "ext-zlib": "*",
     "illuminate/support": "^8.0|^9.0|^10.0|^11.0|^12.0",
-    "perfbase/php-sdk": "dev-develop",
+    "perfbase/php-sdk": "v0.2.0",
     "guzzlehttp/guzzle": "^7.0"
   },
   "require-dev": {
