@@ -71,7 +71,6 @@ class PerfbaseServiceProvider extends ServiceProvider
 
             return Config::fromArray([
                 'api_key' => $apiKey,
-                'api_url' => 'http://receiver:8787', // DO NOT COMMIT
                 'flags' => $flags,
                 'proxy' => $proxy,
                 'timeout' => $timeout,
