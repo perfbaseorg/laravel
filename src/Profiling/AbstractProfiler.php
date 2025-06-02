@@ -80,7 +80,9 @@ abstract class AbstractProfiler
             perfbase_set_attribute($key, $value);
         }
 
-        $this->perfbase->stopTraceSpan($this->spanName);
+        if (!$this->perfbase->stopTraceSpan($this->spanName)) {
+            return;
+        }
 
         // Determine if we should send now or cache
         $sendingMode = config('perfbase.sending.mode');
