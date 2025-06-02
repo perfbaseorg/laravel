@@ -34,8 +34,10 @@ class PerfbaseServiceProvider extends ServiceProvider
             ], 'perfbase-config');
         }
 
-        $this->registerQueueListeners();
-        $this->registerConsoleListeners();
+        if (config('perfbase.enabled')) {
+            $this->registerQueueListeners();
+            $this->registerConsoleListeners();
+        }
     }
 
     /**
