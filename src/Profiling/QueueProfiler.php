@@ -92,9 +92,7 @@ class QueueProfiler extends AbstractProfiler
             'queue' => $this->job->getQueue(),
             'attempts' => (string)($this->job->attempts() ?? 0),
             'connection' => $this->job->getConnectionName(),
+            'job_id' => $this->job->getJobId(),
         ]);
-
-        // Add job ID if available
-        $this->setAttribute('job_id', $this->job->getJobId());
     }
 }

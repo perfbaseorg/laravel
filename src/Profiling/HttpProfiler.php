@@ -104,7 +104,6 @@ class HttpProfiler extends AbstractProfiler
      */
     private function shouldUserBeProfiled(?Authenticatable $user): bool
     {
-
         // Check if the user is authenticated and implements the ProfiledUser interface
         if ($user && method_exists($user, 'shouldBeProfiled')) {
             return $user->shouldBeProfiled();

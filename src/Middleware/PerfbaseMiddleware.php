@@ -36,7 +36,6 @@ class PerfbaseMiddleware
         // Check if profiling is enabled
         if (!config('perfbase.enabled')) {
             // No profiling enabled, just pass the request
-            /** @var Response $response */
             return $next($request);
         }
 
