@@ -88,7 +88,8 @@ class ConsoleProfiler extends AbstractProfiler
 
         // Add console specific attributes
         $this->setAttributes([
-            'command' => $this->getCommandName(),
+            'source' => 'console',
+            'action' => $this->getCommandName(),
             'arguments' => json_encode($this->input->getArguments()) ?: '',
             'options' => json_encode($this->input->getOptions()) ?: '',
             'verbosity' => $this->getVerbosityLevel(),

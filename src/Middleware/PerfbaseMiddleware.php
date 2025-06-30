@@ -33,16 +33,21 @@ class PerfbaseMiddleware
      */
     public function handle(Request $request, Closure $next): Response
     {
+        // Check if profiling is enabled
+        if (!config('perfbase.enabled')) {
+            // No profiling enabled, just pass the request
+            /** @var Response $response */
+            return $next($request);
+        }
+
+        // Profiler is enabled, start profiling
         $profiler = new HttpProfiler($request);
         $profiler->startProfiling();
-
         /** @var Response $response */
         $response = $next($request);
-
         $profiler->setResponse($response);
         $profiler->stopProfiling();
-
         return $response;
-    }
 
+    }
 }

@@ -76,15 +76,20 @@ class HttpProfiler extends AbstractProfiler
     {
         parent::setDefaultAttributes();
 
-        // Add HTTP specific attributes
-        $this->setAttribute('http_method', $this->request->method());
-        $this->setAttribute('http_url', $this->request->fullUrl());
-
         // Set route information if available
         $route = $this->request->route();
+        $action = 'Unknown HTTP Action';
         if ($route instanceof Route) {
-            $this->setAttribute('action', sprintf('%s %s', $this->request->method(), $route->uri()));
+            $action = sprintf('%s %s', $this->request->method(), $route->uri());
         }
+
+        // Add HTTP specific attributes
+        $this->setAttributes([
+            'source' => 'http',
+            'http_method' => $this->request->method(),
+            'http_url' => $this->request->fullUrl(),
+            'action' => $action,
+        ]);
 
         // Set user ID if authenticated
         if (Auth::check()) {
