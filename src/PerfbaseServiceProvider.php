@@ -23,6 +23,13 @@ use Perfbase\SDK\Perfbase as PerfbaseClient;
  */
 class PerfbaseServiceProvider extends ServiceProvider
 {
+
+    /**
+     * Used to store console profilers.
+     * @var array <string, ConsoleProfiler>
+     */
+    private array $consoleProfilers = [];
+
     /**
      * @return void
      */
@@ -123,15 +130,19 @@ class PerfbaseServiceProvider extends ServiceProvider
         Event::listen(CommandStarting::class, function (CommandStarting $event) {
             if ($event->command && $event->input && $event->output) {
                 $profiler = new ConsoleProfiler($event->command, $event->input, $event->output);
+                $this->consoleProfilers[$event->command] = $profiler;
                 $profiler->startProfiling();
             }
         });
 
         Event::listen(CommandFinished::class, function (CommandFinished $event) {
             if ($event->command && $event->input && $event->output) {
-                $profiler = new ConsoleProfiler($event->command, $event->input, $event->output);
-                $profiler->setExitCode($event->exitCode);
-                $profiler->stopProfiling();
+                if (isset($this->consoleProfilers[$event->command])) {
+                    $profiler = $this->consoleProfilers[$event->command];
+                    $profiler->setExitCode($event->exitCode);
+                    $profiler->stopProfiling();
+                    unset($this->consoleProfilers[$event->command]); // Clean up the profiler after use
+                }
             }
         });
     }
