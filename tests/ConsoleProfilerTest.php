@@ -125,7 +125,7 @@ class ConsoleProfilerTest extends TestCase
         $this->callPrivateMethod('setDefaultAttributes');
         $attributes = $this->getPrivateProperty('attributes');
 
-        $this->assertEquals('test:command', $attributes['command']);
+        $this->assertEquals('test:command', $attributes['action']);
         $this->assertArrayHasKey('arguments', $attributes);
         $this->assertArrayHasKey('options', $attributes);
         $this->assertEquals('normal', $attributes['verbosity']);

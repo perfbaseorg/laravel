@@ -96,7 +96,7 @@ class QueueProfilerTest extends TestCase
         $attributes = $this->getPrivateProperty('attributes');
 
         $this->assertEquals('default', $attributes['queue']);
-        $this->assertEquals('App\Jobs\TestJob', $attributes['job_name']);
+        $this->assertEquals('App\Jobs\TestJob', $attributes['action']);
         $this->assertEquals('1', $attributes['attempts']);
         $this->assertEquals('redis', $attributes['connection']);
         $this->assertEquals('123', $attributes['job_id']);

@@ -16,7 +16,7 @@ class DatabaseStrategy implements CacheStrategy
     public function store(array $profileData): void
     {
         Profile::query()->create([
-            'data' => $profileData
+            'data' => $profileData['data'] ?? serialize($profileData)
         ]);
     }
 

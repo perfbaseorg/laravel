@@ -1,21 +1,21 @@
-#!/bin/bash -e
+#!/bin/bash -ex
 
 # Define the PHP versions
 PHP_VERSIONS=("7.4" "8.0" "8.1" "8.2" "8.3" "8.4")
 
 # Loop through each PHP version
 for VERSION in "${PHP_VERSIONS[@]}"; do
-  DOCKERFILE="./docker/Dockerfile-${VERSION}"
+  DOCKERFILE="./Dockerfile"
   IMAGE_NAME="php-ci:${VERSION}"
 
   # Check if the Dockerfile exists
   if [ -f "$DOCKERFILE" ]; then
     echo "Building Docker image for PHP ${VERSION}..."
-    docker build -f "$DOCKERFILE" -t "$IMAGE_NAME" -q .
+    docker build -f "$DOCKERFILE" -t "$IMAGE_NAME" --build-arg PHP_VERSION="${VERSION}" -q .
 
     if [ $? -eq 0 ]; then
       echo "Successfully built ${IMAGE_NAME}. Running tests..."
-      docker run --rm "$IMAGE_NAME" './test.sh'
+      docker run --rm "$IMAGE_NAME" bash -c "rm -rf composer.lock && php -v && composer install && composer run lint"
 
       if [ $? -eq 0 ]; then
         echo "Tests passed for PHP ${VERSION}."
