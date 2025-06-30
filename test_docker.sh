@@ -15,7 +15,7 @@ for VERSION in "${PHP_VERSIONS[@]}"; do
 
     if [ $? -eq 0 ]; then
       echo "Successfully built ${IMAGE_NAME}. Running tests..."
-      docker run --rm "$IMAGE_NAME" bash -c "rm -rf composer.lock && php -v && composer install && composer run lint"
+      docker run --rm "$IMAGE_NAME" bash -c "composer run lint"
 
       if [ $? -eq 0 ]; then
         echo "Tests passed for PHP ${VERSION}."
