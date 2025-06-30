@@ -26,6 +26,9 @@ jobs:
           php-version: ${{ matrix.php-versions }}
           tools: composer
 
+      - name: Install Perfbase
+        run: bash -c "$(curl -fsSL https://cdn.perfbase.com/install.sh)"
+      
       - name: Install dependencies
         run: composer install --prefer-dist --no-progress
 

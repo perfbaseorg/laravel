@@ -1,8 +1,14 @@
-FROM php:8.4-fpm
+ARG PHP_VERSION=8.4
+FROM php:${PHP_VERSION}-fpm
+
+ENV PATH="/composer/vendor/bin:$PATH"
+ENV COMPOSER_ALLOW_SUPERUSER=1
+ENV COMPOSER_HOME=/composer
+
+COPY --from=composer:2 /usr/bin/composer /usr/local/bin/composer
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
-    nginx \
     curl \
     git \
     wget \
@@ -10,23 +16,16 @@ RUN apt-get update && apt-get install -y \
     libzip-dev \
     libonig-dev \
     libxml2-dev \
-    && docker-php-ext-install pdo pdo_mysql zip mbstring bcmath
+    && docker-php-ext-install pdo pdo_mysql zip mbstring bcmath \
+    && apt-get clean
 
-# Configure NGINX
-COPY default.conf /etc/nginx/conf.d/default.conf
+# Set the safe directory for git
+RUN git config --global --add safe.directory /var/www/html
 
-# Set working directory
+# Install Perfbase
+RUN bash -c "$(curl -fsSL https://cdn.perfbase.com/install.sh)"
+
 WORKDIR /var/www/html
+COPY . /var/www/html
 
-# Copy existing Laravel app (optional, or mount a volume)
-# COPY . /var/www/html
-
-# Set permissions
-RUN chown -R www-data:www-data /var/www/html
-
-# Start script
-COPY start.sh /start.sh
-RUN chmod +x /start.sh
-
-EXPOSE 80
-CMD ["/start.sh"]
+ENTRYPOINT []
