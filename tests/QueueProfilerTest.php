@@ -67,7 +67,7 @@ class QueueProfilerTest extends TestCase
 
     public function testConstructor()
     {
-        $this->assertEquals('queue', $this->getPrivateProperty('spanName'));
+        $this->assertEquals('App\Jobs\TestJob', $this->getPrivateProperty('spanName'));
     }
 
     public function testShouldProfileWhenDisabled()

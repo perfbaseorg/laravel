@@ -11,6 +11,7 @@ use Illuminate\Queue\Events\JobProcessed;
 use Illuminate\Queue\Events\JobProcessing;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
+use Perfbase\Laravel\Profiling\AbstractProfiler;
 use Perfbase\Laravel\Profiling\ConsoleProfiler;
 use Perfbase\Laravel\Profiling\QueueProfiler;
 use Perfbase\SDK\Config;
@@ -26,9 +27,9 @@ class PerfbaseServiceProvider extends ServiceProvider
 
     /**
      * Used to store console profilers.
-     * @var array <string, ConsoleProfiler>
+     * @var array <string, AbstractProfiler>
      */
-    private array $consoleProfilers = [];
+    private array $spans = [];
 
     /**
      * @return void
@@ -103,21 +104,31 @@ class PerfbaseServiceProvider extends ServiceProvider
     {
         // The job has started
         Event::listen(JobProcessing::class, function (JobProcessing $event) {
-            $profiler = new QueueProfiler($event->job, $this->getCommandFromJob($event->job));
-            $profiler->startProfiling();
+            $jobName = $this->getCommandFromJob($event->job);
+            if (!isset($this->spans[$jobName])) {
+                $profiler = new QueueProfiler($event->job, $jobName);
+                $this->spans[$jobName] = $profiler;
+                $profiler->startProfiling();
+            }
         });
 
         // The job has stopped
         Event::listen(JobProcessed::class, function (JobProcessed $event) {
-            $profiler = new QueueProfiler($event->job, $this->getCommandFromJob($event->job));
-            $profiler->stopProfiling();
+            $jobName = $this->getCommandFromJob($event->job);
+            if (isset($this->spans[$jobName])) {
+                $profiler = $this->spans[$jobName];
+                $profiler->stopProfiling();
+            }
         });
 
         // The job has failed
         Event::listen(JobExceptionOccurred::class, function (JobExceptionOccurred $event) {
-            $profiler = new QueueProfiler($event->job, $this->getCommandFromJob($event->job));
-            $profiler->setException($event->exception->getMessage());
-            $profiler->stopProfiling();
+            $jobName = $this->getCommandFromJob($event->job);
+            if (isset($this->spans[$jobName])) {
+                $profiler = $this->spans[$jobName];
+                // $profiler->setException($event->exception->getMessage());
+                $profiler->stopProfiling();
+            }
         });
     }
 
@@ -129,19 +140,21 @@ class PerfbaseServiceProvider extends ServiceProvider
     {
         Event::listen(CommandStarting::class, function (CommandStarting $event) {
             if ($event->command && $event->input && $event->output) {
-                $profiler = new ConsoleProfiler($event->command, $event->input, $event->output);
-                $this->consoleProfilers[$event->command] = $profiler;
-                $profiler->startProfiling();
+                if (!isset($this->spans[$event->command])) {
+                    $profiler = new ConsoleProfiler($event->command, $event->input, $event->output);
+                    $this->spans[$event->command] = $profiler;
+                    $profiler->startProfiling();
+                }
             }
         });
 
         Event::listen(CommandFinished::class, function (CommandFinished $event) {
             if ($event->command && $event->input && $event->output) {
-                if (isset($this->consoleProfilers[$event->command])) {
-                    $profiler = $this->consoleProfilers[$event->command];
-                    $profiler->setExitCode($event->exitCode);
+                if (isset($this->spans[$event->command])) {
+                    $profiler = $this->spans[$event->command];
+                    // $profiler->setExitCode($event->exitCode);
                     $profiler->stopProfiling();
-                    unset($this->consoleProfilers[$event->command]); // Clean up the profiler after use
+                    unset($this->spans[$event->command]); // Clean up the profiler after use
                 }
             }
         });
@@ -155,10 +168,38 @@ class PerfbaseServiceProvider extends ServiceProvider
     private function getCommandFromJob(Job $job): string
     {
         $payload = $job->payload();
-        $command = $payload['data']['command']
-            ?? $payload['data']['commandName']
-            ?? $payload['data']['commandName'] . ':' . $payload['data']['commandMethod'];
-        $class = get_class($command);
-        return $class ?: $command ?? 'unknown';
+
+        // Try to get the display name first as it's the most reliable
+        if (isset($payload['displayName'])) {
+            return $payload['displayName'];
+        }
+
+        // Try to get the command name from data
+        if (isset($payload['data']['commandName'])) {
+            return $payload['data']['commandName'];
+        }
+
+        // Try to unserialize the command if it's a serialized object
+        if (isset($payload['data']['command'])) {
+            $command = $payload['data']['command'];
+            // Check if it's a serialized object (starts with O: or a:)
+            if (is_string($command) && preg_match('/^[Oa]:\d+:/', $command)) {
+                try {
+                    $unserialized = unserialize($command);
+                    if (is_object($unserialized)) {
+                        return get_class($unserialized);
+                    }
+                } catch (\Throwable $e) {
+                    // Failed to unserialize, continue
+                }
+            }
+        }
+
+        // Fallback to the job class
+        if (isset($payload['job'])) {
+            return $payload['job'];
+        }
+
+        return 'unknown';
     }
 }

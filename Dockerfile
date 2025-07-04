@@ -25,7 +25,18 @@ RUN git config --global --add safe.directory /var/www/html
 # Install Perfbase
 RUN bash -c "$(curl -fsSL https://cdn.perfbase.com/install.sh)"
 
-WORKDIR /var/www/html
-COPY . /var/www/html
+# Set working directory
+WORKDIR /app
 
+# Install PHP dependencies
+COPY composer.json ./composer.json
+RUN composer install --prefer-dist --no-progress --no-scripts
+
+# Copy project files to container
+COPY . .
+
+# Add Composer's global bin directory to PATH
+ENV PATH="/composer/vendor/bin:$PATH"
+
+# Default Entrypoint
 ENTRYPOINT []
