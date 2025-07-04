@@ -11,6 +11,7 @@ use Illuminate\Queue\Events\JobProcessed;
 use Illuminate\Queue\Events\JobProcessing;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
+use Perfbase\Laravel\Profiling\AbstractProfiler;
 use Perfbase\Laravel\Profiling\ConsoleProfiler;
 use Perfbase\Laravel\Profiling\QueueProfiler;
 use Perfbase\SDK\Config;
@@ -125,7 +126,7 @@ class PerfbaseServiceProvider extends ServiceProvider
             $jobName = $this->getCommandFromJob($event->job);
             if (isset($this->spans[$jobName])) {
                 $profiler = $this->spans[$jobName];
-                $profiler->setException($event->exception->getMessage());
+                // $profiler->setException($event->exception->getMessage());
                 $profiler->stopProfiling();
             }
         });
@@ -151,7 +152,7 @@ class PerfbaseServiceProvider extends ServiceProvider
             if ($event->command && $event->input && $event->output) {
                 if (isset($this->spans[$event->command])) {
                     $profiler = $this->spans[$event->command];
-                    $profiler->setExitCode($event->exitCode);
+                    // $profiler->setExitCode($event->exitCode);
                     $profiler->stopProfiling();
                     unset($this->spans[$event->command]); // Clean up the profiler after use
                 }
