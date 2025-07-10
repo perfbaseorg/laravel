@@ -43,11 +43,13 @@ class AbstractProfilerTest extends TestCase
         // Mock the Perfbase config and client
         $config = Mockery::mock(Config::class);
         $this->perfbaseClient = Mockery::mock(PerfbaseClient::class);
-        $this->perfbaseClient->allows('isAvailable')->andReturns(true);
+        $this->perfbaseClient->allows('isExtensionAvailable')->andReturns(true);
         $this->perfbaseClient->allows('startTraceSpan')->andReturns(true);
         $this->perfbaseClient->allows('stopTraceSpan')->andReturns(true);
+        $this->perfbaseClient->allows('setAttribute')->andReturns(true);
         $this->perfbaseClient->allows('submitTrace')->andReturns(true);
         $this->perfbaseClient->allows('getTraceData')->andReturns('serialized_trace_data');
+        $this->perfbaseClient->allows('reset')->andReturns(true);
         
         $this->app->instance(Config::class, $config);
         $this->app->instance(PerfbaseClient::class, $this->perfbaseClient);

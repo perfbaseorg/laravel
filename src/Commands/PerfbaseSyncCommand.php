@@ -29,9 +29,9 @@ class PerfbaseSyncCommand extends Command
     public function handle(): int
     {
         /** @var string $strategy */
-        $strategy = config('perfbase.cache.config.enabled');
+        $strategy = config('perfbase.sending.mode');
 
-        if (!$strategy) {
+        if (!$strategy || $strategy === 'sync') {
             $this->error('Perfbase is not configured to use a cache strategy');
             return self::FAILURE;
         }
@@ -149,7 +149,7 @@ class PerfbaseSyncCommand extends Command
 
     function getConnectionName(): string
     {
-        $name = config('perfbase.cache.config.database.connection');
+        $name = config('database.default');
         if (!is_string($name)) {
             throw new RuntimeException('Invalid connection name');
         }

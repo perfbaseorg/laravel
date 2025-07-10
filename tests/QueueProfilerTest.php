@@ -25,6 +25,13 @@ class QueueProfilerTest extends TestCase
         // Mock the Perfbase config and client
         $config = Mockery::mock(Config::class);
         $perfbaseClient = Mockery::mock(PerfbaseClient::class);
+        $perfbaseClient->allows('isExtensionAvailable')->andReturns(true);
+        $perfbaseClient->allows('startTraceSpan')->andReturns(true);
+        $perfbaseClient->allows('stopTraceSpan')->andReturns(true);
+        $perfbaseClient->allows('setAttribute')->andReturns(true);
+        $perfbaseClient->allows('submitTrace')->andReturns(true);
+        $perfbaseClient->allows('getTraceData')->andReturns('test-data');
+        $perfbaseClient->allows('reset')->andReturns(true);
         $this->app->instance(Config::class, $config);
         $this->app->instance(PerfbaseClient::class, $perfbaseClient);
 

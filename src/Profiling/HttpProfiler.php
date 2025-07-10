@@ -7,9 +7,11 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Route;
 use Illuminate\Support\Facades\Auth;
 use Perfbase\Laravel\Interfaces\ProfiledUser;
-use Perfbase\SDK\Perfbase as PerfbaseClient;
+use Perfbase\Laravel\Support\PerfbaseErrorHandling;
+use Perfbase\Laravel\Support\SpanNaming;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\Response;
+use Illuminate\Support\Str;
 
 /**
  * Class HttpProfiler
@@ -18,12 +20,14 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class HttpProfiler extends AbstractProfiler
 {
+    use PerfbaseErrorHandling;
+    
     /** @var Request */
     private Request $request;
 
     public function __construct(Request $request)
     {
-        parent::__construct('http');
+        parent::__construct(SpanNaming::forHttp($request));
         $this->request = $request;
     }
 
@@ -64,7 +68,7 @@ class HttpProfiler extends AbstractProfiler
         }
 
         // Finally, check if the extension is actually loaded.
-        $extensionReady = PerfbaseClient::isAvailable();
+        $extensionReady = $this->perfbase->isExtensionAvailable();
         if (!$extensionReady) {
             throw new RuntimeException('Profiling was requested, but the Perfbase extension is not loaded.');
         }
@@ -196,14 +200,7 @@ class HttpProfiler extends AbstractProfiler
     }
 
     /**
-     * Determines if any of the provided components match any of the specified filters.
-     *
-     * The method supports the following filter types:
-     * - **Exact Match:** e.g., "GET /example" matches exactly "GET /example".
-     * - **Wildcard Match:** e.g., "GET /example/*" matches any path that starts with "GET /example/".
-     * - **Regex Match:** e.g., "/^GET \/example\/([0-9]+)\/$/" matches paths like "GET /example/123/".
-     * - **Namespace Prefix Match:** e.g., "App\Http\Controllers" matches any class within that namespace.
-     * - **Match-All Wildcard:** "*" matches any component.
+     * Simplified filter matching using Laravel's pattern matching
      *
      * @param array<string> $components The list of components to be matched against the filters.
      * @param array<string> $filters The list of filters to apply.
@@ -211,92 +208,19 @@ class HttpProfiler extends AbstractProfiler
      */
     public static function matchesFilters(array $components, array $filters): bool
     {
-        foreach ($filters as $filter) {
-            if (self::isMatchAllWildcard($filter)) {
+        return collect($filters)->some(function ($filter) use ($components) {
+            // Handle match-all wildcard
+            if ($filter === '*' || $filter === '.*') {
                 return true;
             }
-
-            $regex = self::constructRegexFromFilter($filter);
-            foreach ($components as $component) {
-                if (preg_match($regex, $component)) {
-                    return true;
-                }
+            
+            // Handle regex patterns (enclosed in forward slashes)
+            if (preg_match('/^\/.*\/$/', $filter)) {
+                return collect($components)->some(fn($component) => preg_match($filter, $component));
             }
-        }
-
-        return false;
-    }
-
-    /**
-     * Determines if the provided filter is a match-all wildcard.
-     *
-     * @param string $filter The filter string to evaluate.
-     * @return bool Returns true if the filter is "*"; otherwise, false.
-     */
-    private static function isMatchAllWildcard(string $filter): bool
-    {
-        return $filter === '*' || $filter === '.*';
-    }
-
-    /**
-     * Constructs a regex pattern based on the provided filter.
-     *
-     * @param string $filter The filter string used to build the regex pattern.
-     * @return string The constructed regex pattern.
-     */
-    private static function constructRegexFromFilter(string $filter): string
-    {
-        // **Regex Filter:** If the filter starts and ends with "/", treat it as a regex
-        if (self::isRegexFilter($filter)) {
-            return $filter;
-        }
-
-        $escapedFilter = preg_quote($filter, '/');
-
-        // **Wildcard Filter:** Convert wildcard "*" to ".*" in regex
-        if (self::containsWildcard($filter)) {
-            return '/^' . str_replace('\*', '.*', $escapedFilter) . '$/';
-        }
-
-        // **Namespace Prefix Filter:** If the filter contains "\", treat it as a namespace prefix
-        if (self::containsNamespaceSeparator($filter)) {
-            return '/^' . $escapedFilter . '.*$/';
-        }
-
-        // **Path or Exact Match Filter:** If the filter contains "/", treat it as an exact path
-        return '/^' . $escapedFilter . '$/';
-    }
-
-    /**
-     * Determines if the filter is a regex pattern.
-     *
-     * @param string $filter The filter string to evaluate.
-     * @return bool Returns true if the filter is enclosed with "/", indicating a regex; otherwise, false.
-     */
-    private static function isRegexFilter(string $filter): bool
-    {
-        return substr($filter, 0, 1) === '/' && substr($filter, -1) === '/';
-    }
-
-    /**
-     * Determines if the filter contains a wildcard character "*".
-     *
-     * @param string $filter The filter string to evaluate.
-     * @return bool Returns true if the filter contains "*"; otherwise, false.
-     */
-    private static function containsWildcard(string $filter): bool
-    {
-        return strpos($filter, '*') !== false;
-    }
-
-    /**
-     * Determines if the filter contains a namespace separator "\\".
-     *
-     * @param string $filter The filter string to evaluate.
-     * @return bool Returns true if the filter contains "\\"; otherwise, false.
-     */
-    private static function containsNamespaceSeparator(string $filter): bool
-    {
-        return strpos($filter, '\\') !== false;
+            
+            // Use Laravel's string matching for all other patterns
+            return collect($components)->some(fn($component) => Str::is($filter, $component));
+        });
     }
 }
