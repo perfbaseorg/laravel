@@ -14,19 +14,25 @@ use Illuminate\Support\ServiceProvider;
 use Perfbase\Laravel\Profiling\AbstractProfiler;
 use Perfbase\Laravel\Profiling\ConsoleProfiler;
 use Perfbase\Laravel\Profiling\QueueProfiler;
+use Perfbase\Laravel\Profiling\UniversalProfiler;
+use Perfbase\Laravel\Support\PerfbaseConfig;
+use Perfbase\Laravel\Support\PerfbaseErrorHandling;
+use Perfbase\Laravel\Support\SpanNaming;
 use Perfbase\SDK\Config;
-use Perfbase\SDK\Config as PerfbaseConfig;
+use Perfbase\SDK\Config as SdkConfig;
 use Perfbase\SDK\Perfbase;
 use Perfbase\SDK\Perfbase as PerfbaseClient;
+use Perfbase\SDK\Extension\ExtensionInterface;
 
 /**
  * Class PerfbaseServiceProvider
  */
 class PerfbaseServiceProvider extends ServiceProvider
 {
+    use PerfbaseErrorHandling;
 
     /**
-     * Used to store console profilers.
+     * Unified span storage with unique IDs
      * @var array <string, AbstractProfiler>
      */
     private array $spans = [];
@@ -40,11 +46,16 @@ class PerfbaseServiceProvider extends ServiceProvider
             $this->publishes([
                 __DIR__ . '/../config/perfbase.php' => config_path('perfbase.php'),
             ], 'perfbase-config');
+            
+            // Register commands
+            $this->commands([
+                \Perfbase\Laravel\Commands\PerfbaseClearCommand::class,
+                \Perfbase\Laravel\Commands\PerfbaseSyncCommand::class,
+            ]);
         }
 
-        if (config('perfbase.enabled')) {
-            $this->registerQueueListeners();
-            $this->registerConsoleListeners();
+        if (PerfbaseConfig::enabled()) {
+            $this->registerEventListeners();
         }
     }
 
@@ -88,77 +99,190 @@ class PerfbaseServiceProvider extends ServiceProvider
         });
 
         $this->app->singleton(Perfbase::class, function (Application $app) {
-            /** @var PerfbaseConfig $config */
-            $config = $app->make(PerfbaseConfig::class);
+            /** @var SdkConfig $config */
+            $config = $app->make(SdkConfig::class);
+
+            // Check if we have a mocked extension in the container (for testing)
+            $extension = $app->bound(ExtensionInterface::class) 
+                ? $app->make(ExtensionInterface::class) 
+                : null;
 
             // Start a new perfbase instance
-            return new PerfbaseClient($config);
+            return new PerfbaseClient($config, $extension);
         });
     }
 
     /**
-     * Register the queue listeners for job processing events.
+     * Register unified event listeners for profiling
+     *
      * @return void
      */
-    private function registerQueueListeners(): void
+    private function registerEventListeners(): void
     {
-        // The job has started
-        Event::listen(JobProcessing::class, function (JobProcessing $event) {
-            $jobName = $this->getCommandFromJob($event->job);
-            if (!isset($this->spans[$jobName])) {
-                $profiler = new QueueProfiler($event->job, $jobName);
-                $this->spans[$jobName] = $profiler;
-                $profiler->startProfiling();
-            }
-        });
+        $this->registerEventPair(
+            JobProcessing::class,
+            JobProcessed::class,
+            JobExceptionOccurred::class,
+            fn($event) => $this->createQueueProfiler($event)
+        );
 
-        // The job has stopped
-        Event::listen(JobProcessed::class, function (JobProcessed $event) {
-            $jobName = $this->getCommandFromJob($event->job);
-            if (isset($this->spans[$jobName])) {
-                $profiler = $this->spans[$jobName];
-                $profiler->stopProfiling();
-            }
-        });
-
-        // The job has failed
-        Event::listen(JobExceptionOccurred::class, function (JobExceptionOccurred $event) {
-            $jobName = $this->getCommandFromJob($event->job);
-            if (isset($this->spans[$jobName])) {
-                $profiler = $this->spans[$jobName];
-                // $profiler->setException($event->exception->getMessage());
-                $profiler->stopProfiling();
-            }
-        });
+        $this->registerEventPair(
+            CommandStarting::class,
+            CommandFinished::class,
+            null,
+            fn($event) => $this->createConsoleProfiler($event)
+        );
     }
 
     /**
-     * Register the console listeners for command events.
+     * Register a pair of start/stop/error events with unified handling
+     *
+     * @param string $startEvent
+     * @param string $stopEvent
+     * @param string|null $errorEvent
+     * @param callable $profilerFactory
      * @return void
      */
-    private function registerConsoleListeners(): void
+    private function registerEventPair(string $startEvent, string $stopEvent, ?string $errorEvent, callable $profilerFactory): void
     {
-        Event::listen(CommandStarting::class, function (CommandStarting $event) {
-            if ($event->command && $event->input && $event->output) {
-                if (!isset($this->spans[$event->command])) {
-                    $profiler = new ConsoleProfiler($event->command, $event->input, $event->output);
-                    $this->spans[$event->command] = $profiler;
+        // Start event handler
+        Event::listen($startEvent, function ($event) use ($profilerFactory) {
+            try {
+                $spanId = uniqid('span_', true);
+                $profiler = $profilerFactory($event);
+                
+                if ($profiler) {
+                    $this->spans[$spanId] = $profiler;
+                    $this->storeSpanId($event, $spanId);
                     $profiler->startProfiling();
                 }
+            } catch (\Throwable $e) {
+                $this->handleProfilingError($e, 'event_start');
             }
         });
 
-        Event::listen(CommandFinished::class, function (CommandFinished $event) {
-            if ($event->command && $event->input && $event->output) {
-                if (isset($this->spans[$event->command])) {
-                    $profiler = $this->spans[$event->command];
-                    // $profiler->setExitCode($event->exitCode);
+        // Stop event handler
+        Event::listen($stopEvent, function ($event) {
+            try {
+                $spanId = $this->getSpanId($event);
+                if ($spanId && isset($this->spans[$spanId])) {
+                    $profiler = $this->spans[$spanId];
+                    $this->handleEventData($event, $profiler);
                     $profiler->stopProfiling();
-                    unset($this->spans[$event->command]); // Clean up the profiler after use
+                    unset($this->spans[$spanId]);
                 }
+            } catch (\Throwable $e) {
+                $this->handleProfilingError($e, 'event_stop');
             }
         });
+
+        // Error event handler (if provided)
+        if ($errorEvent) {
+            Event::listen($errorEvent, function ($event) {
+                try {
+                    $spanId = $this->getSpanId($event);
+                    if ($spanId && isset($this->spans[$spanId])) {
+                        $profiler = $this->spans[$spanId];
+                        $this->handleEventData($event, $profiler);
+                        $profiler->stopProfiling();
+                        unset($this->spans[$spanId]);
+                    }
+                } catch (\Throwable $e) {
+                    $this->handleProfilingError($e, 'event_error');
+                }
+            });
+        }
     }
+
+    /**
+     * Create a queue profiler from event
+     *
+     * @param JobProcessing $event
+     * @return UniversalProfiler
+     */
+    private function createQueueProfiler(JobProcessing $event): UniversalProfiler
+    {
+        $jobName = $this->getCommandFromJob($event->job);
+        $spanName = SpanNaming::forQueue($jobName);
+        
+        return new UniversalProfiler($spanName, [
+            'job_name' => $jobName,
+            'queue' => $event->job->getQueue(),
+            'connection' => $event->connectionName,
+        ]);
+    }
+
+    /**
+     * Create a console profiler from event
+     *
+     * @param CommandStarting $event
+     * @return UniversalProfiler|null
+     */
+    private function createConsoleProfiler(CommandStarting $event): ?UniversalProfiler
+    {
+        if (!$event->command || !$event->input || !$event->output) {
+            return null;
+        }
+
+        $spanName = SpanNaming::forConsole($event->command);
+
+        return new UniversalProfiler($spanName, [
+            'command' => $event->command,
+            'arguments' => $event->input->getArguments(),
+            'options' => $event->input->getOptions(),
+        ]);
+    }
+
+    /**
+     * Store span ID for later retrieval
+     *
+     * @param mixed $event
+     * @param string $spanId
+     * @return void
+     */
+    private function storeSpanId($event, string $spanId): void
+    {
+        if ($event instanceof JobProcessing) {
+            // Queue job - store in payload
+            $payload = $event->job->payload();
+            $payload['perfbase_span_id'] = $spanId;
+        } else {
+            // Console command - store as property
+            $event->perfbaseSpanId = $spanId;
+        }
+    }
+
+    /**
+     * Get span ID from event
+     *
+     * @param mixed $event
+     * @return string|null
+     */
+    private function getSpanId($event): ?string
+    {
+        if ($event instanceof JobProcessed || $event instanceof JobExceptionOccurred) {
+            return $event->job->payload()['perfbase_span_id'] ?? null;
+        }
+        
+        return $event->perfbaseSpanId ?? null;
+    }
+
+    /**
+     * Handle event-specific data
+     *
+     * @param mixed $event
+     * @param AbstractProfiler $profiler
+     * @return void
+     */
+    private function handleEventData($event, AbstractProfiler $profiler): void
+    {
+        if ($event instanceof JobExceptionOccurred) {
+            $profiler->setException($event->exception->getMessage());
+        } elseif ($event instanceof CommandFinished) {
+            $profiler->setExitCode($event->exitCode);
+        }
+    }
+
 
     /**
      * Get the command name from the job.

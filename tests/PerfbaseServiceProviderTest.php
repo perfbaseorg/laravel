@@ -10,8 +10,11 @@ use Illuminate\Queue\Events\JobProcessing;
 use Illuminate\Support\Facades\Event;
 use Orchestra\Testbench\TestCase;
 use Perfbase\Laravel\PerfbaseServiceProvider;
+use Perfbase\Laravel\Support\PerfbaseConfig;
 use Perfbase\SDK\Config;
 use Perfbase\SDK\Perfbase as PerfbaseClient;
+use Perfbase\SDK\Extension\ExtensionInterface;
+use Mockery;
 
 class PerfbaseServiceProviderTest extends TestCase
 {
@@ -23,6 +26,17 @@ class PerfbaseServiceProviderTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        
+        // Mock the extension interface to avoid extension dependency
+        $mockExtension = Mockery::mock(ExtensionInterface::class);
+        $mockExtension->shouldReceive('isAvailable')->andReturn(true);
+        $mockExtension->shouldReceive('enable')->andReturn();
+        $mockExtension->shouldReceive('disable')->andReturn();
+        $mockExtension->shouldReceive('getData')->andReturn('{}');
+        $mockExtension->shouldReceive('reset')->andReturn();
+        $mockExtension->shouldReceive('setAttribute')->andReturn();
+        
+        $this->app->instance(ExtensionInterface::class, $mockExtension);
         
         // Set up basic config
         config([
@@ -36,6 +50,12 @@ class PerfbaseServiceProviderTest extends TestCase
                 ],
             ]
         ]);
+    }
+
+    protected function tearDown(): void
+    {
+        Mockery::close();
+        parent::tearDown();
     }
 
     public function testServiceProviderRegistersConfig()
@@ -86,6 +106,7 @@ class PerfbaseServiceProviderTest extends TestCase
         Event::forget(JobExceptionOccurred::class);
         
         config(['perfbase.enabled' => true]);
+        PerfbaseConfig::clearCache(); // Clear cache so new config is picked up
         
         // Re-register the service provider to trigger boot
         $provider = new PerfbaseServiceProvider($this->app);
@@ -104,6 +125,7 @@ class PerfbaseServiceProviderTest extends TestCase
         Event::forget(CommandFinished::class);
         
         config(['perfbase.enabled' => true]);
+        PerfbaseConfig::clearCache(); // Clear cache so new config is picked up
         
         // Re-register the service provider to trigger boot
         $provider = new PerfbaseServiceProvider($this->app);
@@ -124,6 +146,7 @@ class PerfbaseServiceProviderTest extends TestCase
         Event::forget(CommandFinished::class);
         
         config(['perfbase.enabled' => false]);
+        PerfbaseConfig::clearCache(); // Clear cache so new config is picked up
         
         // Re-register the service provider to trigger boot
         $provider = new PerfbaseServiceProvider($this->app);

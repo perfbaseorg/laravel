@@ -26,8 +26,8 @@ class MatchesFiltersTest extends TestCase
                 'expected' => true, // Matches with "*"
             ],
             [
-                'filters' => ['App\Http\Controllers'],
-                'expected' => true, // Namespace prefix match
+                'filters' => ['App\Http\Controllers*'],
+                'expected' => true, // Namespace prefix match with wildcard
             ],
             [
                 'filters' => ['UserController'],

@@ -77,7 +77,7 @@ abstract class AbstractProfiler
     {
         // Apply attributes
         foreach ($this->attributes as $key => $value) {
-            perfbase_set_attribute($key, $value);
+            $this->perfbase->setAttribute($key, $value);
         }
 
         if (!$this->perfbase->stopTraceSpan($this->spanName)) {
@@ -181,6 +181,26 @@ abstract class AbstractProfiler
 
         // Check if the random decimal is less than or equal to the sample rate
         return $randomDecimal <= $sampleRate;
+    }
+
+    /**
+     * Set exception information for the current trace
+     *
+     * @param string $message
+     */
+    public function setException(string $message): void
+    {
+        $this->setAttribute('exception', $message);
+    }
+
+    /**
+     * Set exit code for the current trace
+     *
+     * @param int $code
+     */
+    public function setExitCode(int $code): void
+    {
+        $this->setAttribute('exit_code', (string)$code);
     }
 
     /**
