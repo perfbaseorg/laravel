@@ -3,8 +3,7 @@
 namespace Perfbase\Laravel\Profiling;
 
 use Illuminate\Contracts\Container\BindingResolutionException;
-use JsonException;
-use Perfbase\Laravel\Caching\CacheStrategyFactory;
+use Perfbase\Laravel\Support\PerfbaseErrorHandling;
 use Perfbase\SDK\Exception\PerfbaseException;
 use Perfbase\SDK\Exception\PerfbaseExtensionException;
 use Perfbase\SDK\Exception\PerfbaseInvalidSpanException;
@@ -14,6 +13,8 @@ use RuntimeException;
 
 abstract class AbstractProfiler
 {
+    use PerfbaseErrorHandling;
+
     /** @var PerfbaseClient */
     protected PerfbaseClient $perfbase;
 
@@ -52,7 +53,6 @@ abstract class AbstractProfiler
     /**
      * Start profiling with the given context
      *
-     * @throws JsonException
      * @throws PerfbaseExtensionException
      * @throws PerfbaseInvalidSpanException
      * @throws PerfbaseException
@@ -69,13 +69,15 @@ abstract class AbstractProfiler
     }
 
     /**
-     * Stop profiling and handle the trace data
+     * Stop profiling and submit the trace.
+     *
+     * On submission failure, the error is logged but not re-thrown
+     * so profiling never disrupts the application.
      *
      * @throws PerfbaseException
      */
     public function stopProfiling(): void
     {
-        // Apply attributes
         foreach ($this->attributes as $key => $value) {
             $this->perfbase->setAttribute($key, $value);
         }
@@ -84,22 +86,17 @@ abstract class AbstractProfiler
             return;
         }
 
-        // Determine if we should send now or cache
-        $sendingMode = config('perfbase.sending.mode');
-        $shouldSendNow = $sendingMode === 'sync';
+        $result = $this->perfbase->submitTrace();
 
-        if (!in_array($sendingMode, ['sync', 'database', 'file'], true)) {
-            throw new RuntimeException('Invalid sending mode specified in the configuration.');
-        }
-
-        if ($shouldSendNow) {
-            $this->perfbase->submitTrace();
-        } else {
-            $cache = CacheStrategyFactory::make();
-            $cache->store([
-                'data' => $this->perfbase->getTraceData(),
-                'created_at' => now()->toDateTimeString(),
-            ]);
+        if (!$result->isSuccess()) {
+            $this->handleProfilingError(
+                new PerfbaseException(sprintf(
+                    'Trace submission failed (%s): %s',
+                    $result->getStatus(),
+                    $result->getMessage()
+                )),
+                'submit'
+            );
         }
     }
 

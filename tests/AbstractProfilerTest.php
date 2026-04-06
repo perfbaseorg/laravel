@@ -4,13 +4,12 @@ namespace Tests;
 
 require_once __DIR__ . '/TestHelpers.php';
 
-use Illuminate\Support\Facades\File;
 use Orchestra\Testbench\TestCase;
-use Perfbase\Laravel\Caching\FileStrategy;
 use Perfbase\Laravel\Profiling\AbstractProfiler;
 use Perfbase\Laravel\PerfbaseServiceProvider;
 use Perfbase\SDK\Config;
 use Perfbase\SDK\Perfbase as PerfbaseClient;
+use Perfbase\SDK\SubmitResult;
 use RuntimeException;
 use ReflectionClass;
 use Mockery;
@@ -29,7 +28,6 @@ class AbstractProfilerTest extends TestCase
     private ConcreteProfiler $profiler;
     private ReflectionClass $reflection;
     private $perfbaseClient;
-    private string $testPath;
 
     protected function getPackageProviders($app): array
     {
@@ -47,30 +45,19 @@ class AbstractProfilerTest extends TestCase
         $this->perfbaseClient->allows('startTraceSpan')->andReturns(true);
         $this->perfbaseClient->allows('stopTraceSpan')->andReturns(true);
         $this->perfbaseClient->allows('setAttribute')->andReturns(true);
-        $this->perfbaseClient->allows('submitTrace')->andReturns(true);
+        $this->perfbaseClient->allows('submitTrace')->andReturns(SubmitResult::success());
         $this->perfbaseClient->allows('getTraceData')->andReturns('serialized_trace_data');
         $this->perfbaseClient->allows('reset')->andReturns(true);
         
         $this->app->instance(Config::class, $config);
         $this->app->instance(PerfbaseClient::class, $this->perfbaseClient);
-        
-        // Set up file path for cache tests
-        $this->testPath = storage_path('testing/perfbase');
-        
+
         // Set up basic config
         config([
             'perfbase' => [
                 'enabled' => true,
                 'api_key' => 'test-key',
                 'sample_rate' => 1.0,
-                'sending' => [
-                    'mode' => 'sync',
-                    'config' => [
-                        'file' => [
-                            'path' => $this->testPath
-                        ]
-                    ]
-                ],
             ],
             'app' => [
                 'env' => 'testing',
@@ -84,10 +71,6 @@ class AbstractProfilerTest extends TestCase
 
     protected function tearDown(): void
     {
-        if (File::exists($this->testPath)) {
-            File::deleteDirectory($this->testPath);
-        }
-        
         Mockery::close();
         parent::tearDown();
     }
@@ -211,50 +194,13 @@ class AbstractProfilerTest extends TestCase
         $this->assertTrue(true); // Explicit assertion
     }
 
-    public function testStopProfilingWithSyncMode()
+    public function testStopProfilingSubmitsTrace()
     {
-        config(['perfbase.sending.mode' => 'sync']);
-        
         // Just test that the method can be called without errors
         $this->profiler->setAttribute('test', 'value');
         $this->profiler->stopProfiling();
-        
-        // Verify config was set correctly
-        $this->assertEquals('sync', config('perfbase.sending.mode'));
-        $this->assertTrue(true);
-    }
 
-    public function testStopProfilingWithFileMode()
-    {
-        config(['perfbase.sending.mode' => 'file']);
-        
-        // Mock File facade to avoid actual file operations
-        File::shouldReceive('exists')
-            ->andReturn(false);
-        File::shouldReceive('makeDirectory')
-            ->andReturn(true);
-        File::shouldReceive('put')
-            ->andReturn(true);
-        
-        $this->profiler->stopProfiling();
-        
-        // Verify config was set correctly
-        $this->assertEquals('file', config('perfbase.sending.mode'));
         $this->assertTrue(true);
-    }
-
-    public function testStopProfilingWithInvalidSendingMode()
-    {
-        config(['perfbase.sending.mode' => 'invalid']);
-        
-        // Test that invalid mode is set
-        $this->assertEquals('invalid', config('perfbase.sending.mode'));
-        
-        // Expect the RuntimeException for invalid sending mode
-        $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Invalid sending mode specified in the configuration.');
-        
-        $this->profiler->stopProfiling();
     }
 
     public function testStopProfilingWhenSpanNotStarted()

@@ -12,8 +12,6 @@ use Illuminate\Queue\Events\JobProcessing;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 use Perfbase\Laravel\Profiling\AbstractProfiler;
-use Perfbase\Laravel\Profiling\ConsoleProfiler;
-use Perfbase\Laravel\Profiling\QueueProfiler;
 use Perfbase\Laravel\Profiling\UniversalProfiler;
 use Perfbase\Laravel\Support\PerfbaseConfig;
 use Perfbase\Laravel\Support\PerfbaseErrorHandling;
@@ -46,12 +44,6 @@ class PerfbaseServiceProvider extends ServiceProvider
             $this->publishes([
                 __DIR__ . '/../config/perfbase.php' => config_path('perfbase.php'),
             ], 'perfbase-config');
-            
-            // Register commands
-            $this->commands([
-                \Perfbase\Laravel\Commands\PerfbaseClearCommand::class,
-                \Perfbase\Laravel\Commands\PerfbaseSyncCommand::class,
-            ]);
         }
 
         if (PerfbaseConfig::enabled()) {
@@ -82,10 +74,10 @@ class PerfbaseServiceProvider extends ServiceProvider
             $flags = $config['perfbase.flags'];
 
             /** @var string|null $proxy */
-            $proxy = $config['perfbase.sending.proxy'];
+            $proxy = $config['perfbase.proxy'];
 
             /** @var numeric $timeout */
-            $timeout = $config['perfbase.sending.timeout'];
+            $timeout = $config['perfbase.timeout'];
 
             /** @var string $apiKey */
             $apiKey = $config['perfbase.api_key'];

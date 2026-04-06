@@ -38,10 +38,8 @@ class UniversalProfilerTest extends TestCase
                 'api_key' => 'test-key',
                 'flags' => 0,
                 'sample_rate' => 1.0,
-                'sending' => [
-                    'proxy' => null,
-                    'timeout' => 5,
-                ],
+                'proxy' => null,
+                'timeout' => 5,
             ]
         ]);
     }

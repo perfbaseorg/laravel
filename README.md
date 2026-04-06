@@ -15,7 +15,7 @@ Seamless Laravel integration for Perfbase - a comprehensive Application Performa
 - ⚡ **Queue Job Profiling** - Track background job performance and failures
 - 🏷️ **Custom Attributes** - Add contextual metadata to traces
 - 🎯 **Smart Sampling** - Control data collection with configurable sample rates
-- 💾 **Flexible Data Storage** - Sync immediately or buffer locally (file/database)
+- 💾 **Reliable Delivery** - Explicit success/failure reporting on trace submission
 - 🔧 **Granular Control** - Include/exclude specific routes, commands, or jobs
 - 🛡️ **Multi-tenant Support** - Organization and project-level data isolation
 
@@ -63,7 +63,6 @@ Add to your `.env` file:
 PERFBASE_ENABLED=true
 PERFBASE_API_KEY=your_api_key_here
 PERFBASE_SAMPLE_RATE=0.1
-PERFBASE_SENDING_MODE=sync
 ```
 
 ### 5. Add Middleware (Optional but Recommended)
@@ -100,17 +99,14 @@ The package auto-registers and provides several configuration options:
 // config/perfbase.php
 return [
     'enabled' => env('PERFBASE_ENABLED', false),
+    'debug' => env('PERFBASE_DEBUG', false),
+    'log_errors' => env('PERFBASE_LOG_ERRORS', true),
     'api_key' => env('PERFBASE_API_KEY'),
     'sample_rate' => env('PERFBASE_SAMPLE_RATE', 0.1),
-    
-    'sending' => [
-        'mode' => env('PERFBASE_SENDING_MODE', 'sync'),
-        'timeout' => env('PERFBASE_TIMEOUT', 5),
-        'proxy' => env('PERFBASE_PROXY'),
-    ],
-    
+    'timeout' => env('PERFBASE_TIMEOUT', 5),
+    'proxy' => env('PERFBASE_PROXY'),
     'flags' => env('PERFBASE_FLAGS', \Perfbase\SDK\FeatureFlags::DefaultFlags),
-    // ... more options
+    // ... include/exclude filters
 ];
 ```
 
@@ -121,30 +117,11 @@ return [
 | `PERFBASE_ENABLED` | `false` | Enable/disable profiling |
 | `PERFBASE_API_KEY` | `null` | Your Perfbase API key (required) |
 | `PERFBASE_SAMPLE_RATE` | `0.1` | Sampling rate (0.0 to 1.0) |
-| `PERFBASE_SENDING_MODE` | `sync` | Data sending mode (`sync`, `file`, `database`) |
+| `PERFBASE_DEBUG` | `false` | Enable debug mode (throws exceptions) |
+| `PERFBASE_LOG_ERRORS` | `true` | Log profiling errors |
 | `PERFBASE_TIMEOUT` | `5` | API request timeout in seconds |
 | `PERFBASE_PROXY` | `null` | HTTP proxy URL |
 | `PERFBASE_FLAGS` | Default flags | Profiling feature flags |
-
-### Sending Modes
-
-#### Sync Mode (Default)
-Data is sent immediately to Perfbase:
-```env
-PERFBASE_SENDING_MODE=sync
-```
-
-#### File Buffering
-Data is stored in local files and sent later:
-```env
-PERFBASE_SENDING_MODE=file
-```
-
-#### Database Buffering  
-Data is cached in your database and sent later:
-```env
-PERFBASE_SENDING_MODE=database
-```
 
 ### Profiling Features Control
 
@@ -183,11 +160,11 @@ Control which routes, commands, and jobs are profiled:
         'api/*',
         'admin/*'
     ],
-    'console' => [
+    'artisan' => [
         'app:*',
         'queue:*'
     ],
-    'queue' => [
+    'jobs' => [
         'App\\Jobs\\*'
     ]
 ],
@@ -197,11 +174,11 @@ Control which routes, commands, and jobs are profiled:
         'health-check',
         '_debugbar/*'
     ],
-    'console' => [
+    'artisan' => [
         'horizon:*',
         'telescope:*'
     ],
-    'queue' => [
+    'jobs' => [
         'App\\Jobs\\DebugJob'
     ]
 ]
@@ -298,56 +275,7 @@ class User extends Authenticatable implements ProfiledUser
 }
 ```
 
-## Artisan Commands
-
-### Sync Buffered Data
-
-When using `file` or `database` sending modes, use this command to send buffered data:
-
-```bash
-# Send all buffered trace data to Perfbase
-php artisan perfbase:sync
-
-# Recommended: Set up a cron job
-# * * * * * cd /path-to-your-project && php artisan perfbase:sync >> /dev/null 2>&1
-```
-
-### Clear Buffered Data
-
-Remove all locally buffered traces:
-
-```bash
-# Clear all buffered data (useful for debugging)
-php artisan perfbase:clear
-```
-
 ## Advanced Configuration
-
-### Database Strategy Setup
-
-When using `database` sending mode, you may need to run the migration:
-
-```bash
-php artisan migrate
-```
-
-The package includes a migration for the `perfbase_profiles` table.
-
-### Custom Cache Paths
-
-For file-based buffering, customize the storage path:
-
-```php
-// config/perfbase.php
-'sending' => [
-    'mode' => 'file',
-    'config' => [
-        'file' => [
-            'path' => storage_path('app/perfbase-cache'),
-        ],
-    ],
-],
-```
 
 ### Performance Optimization
 
@@ -359,7 +287,6 @@ For high-traffic applications:
 'flags' => \Perfbase\SDK\FeatureFlags::UseCoarseClock | 
            \Perfbase\SDK\FeatureFlags::TrackCpuTime |
            \Perfbase\SDK\FeatureFlags::TrackPdo,
-'sending' => ['mode' => 'file'], // Buffer locally
 ```
 
 ### Multi-Environment Setup
@@ -385,7 +312,7 @@ The Perfbase facade provides access to all SDK methods:
 | `stopTraceSpan($name)` | Stop profiling a named span |
 | `setAttribute($key, $value)` | Add attribute to current trace |
 | `setFlags($flags)` | Change profiling feature flags |
-| `submitTrace()` | Submit trace data to Perfbase |
+| `submitTrace()` | Submit trace data to Perfbase (returns `SubmitResult`) |
 | `getTraceData($spanName = '')` | Get raw trace data |
 | `reset()` | Clear current trace session |
 | `isExtensionAvailable()` | Check if extension is loaded |
@@ -420,14 +347,6 @@ php --ini
 bash -c "$(curl -fsSL https://cdn.perfbase.com/install.sh)"
 ```
 
-### Permission Issues (File Mode)
-
-```bash
-# Ensure storage directory is writable
-chmod -R 755 storage/perfbase
-chown -R www-data:www-data storage/perfbase
-```
-
 ### High Memory Usage
 
 ```php
@@ -435,17 +354,6 @@ chown -R www-data:www-data storage/perfbase
 'flags' => \Perfbase\SDK\FeatureFlags::UseCoarseClock | 
            \Perfbase\SDK\FeatureFlags::TrackCpuTime,
 'sample_rate' => 0.01, // Lower sample rate
-```
-
-### Database Issues (Database Mode)
-
-```bash
-# Ensure migration is run
-php artisan migrate
-
-# Check database connection
-php artisan tinker
->>> DB::connection()->getPdo();
 ```
 
 ## Testing
@@ -471,7 +379,6 @@ public function test_something()
 
 - **Minimal Overhead**: ~1-3ms per request with default settings
 - **Sampling**: Use sample rates to reduce impact in production
-- **Async Options**: File/database modes reduce request impact
 - **Selective Profiling**: Use include/exclude filters strategically
 
 ## Security Considerations

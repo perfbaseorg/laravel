@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Facade;
 /**
  * @method static void startTraceSpan(string $spanName, array<string, string> $attributes = [])
  * @method static bool stopTraceSpan(string $spanName)
- * @method static void submitTrace()
+ * @method static \Perfbase\SDK\SubmitResult submitTrace()
  * @method static string getTraceData(string $spanName = '')
  * @method static void reset()
  * @method static bool isExtensionAvailable()

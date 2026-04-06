@@ -9,6 +9,7 @@ use Perfbase\Laravel\Middleware\PerfbaseMiddleware;
 use Perfbase\Laravel\PerfbaseServiceProvider;
 use Perfbase\SDK\Config;
 use Perfbase\SDK\Perfbase as PerfbaseClient;
+use Perfbase\SDK\SubmitResult;
 use Mockery;
 
 class PerfbaseMiddlewareTest extends TestCase
@@ -32,7 +33,7 @@ class PerfbaseMiddlewareTest extends TestCase
         $this->perfbaseClient->allows('startTraceSpan')->andReturns(true);
         $this->perfbaseClient->allows('stopTraceSpan')->andReturns(true);
         $this->perfbaseClient->allows('setAttribute')->andReturns(true);
-        $this->perfbaseClient->allows('submitTrace')->andReturns(true);
+        $this->perfbaseClient->allows('submitTrace')->andReturns(SubmitResult::success());
         $this->perfbaseClient->allows('getTraceData')->andReturns(['trace' => 'data']);
         $this->perfbaseClient->allows('reset')->andReturns(true);
 
@@ -45,9 +46,6 @@ class PerfbaseMiddlewareTest extends TestCase
                 'enabled' => true,
                 'api_key' => 'test-key',
                 'sample_rate' => 1.0,
-                'sending' => [
-                    'mode' => 'sync',
-                ],
                 'include' => [
                     'http' => ['*'],
                 ],
