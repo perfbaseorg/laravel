@@ -42,7 +42,7 @@ class SpanNaming
         }
         
         // Ensure path starts with /
-        if (!str_starts_with($path, '/')) {
+        if (strpos($path, '/') !== 0) {
             $path = '/' . $path;
         }
         

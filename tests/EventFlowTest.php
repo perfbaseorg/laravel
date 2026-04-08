@@ -158,9 +158,9 @@ class EventFlowTest extends TestCase
         $this->assertTrue(true);
     }
 
-    public function testNullCommandIsIgnored(): void
+    public function testEmptyCommandIsIgnored(): void
     {
-        $event = new CommandStarting(null, new ArrayInput([]), new NullOutput());
+        $event = new CommandStarting('', new ArrayInput([]), new NullOutput());
         Event::dispatch($event);
 
         $this->perfbaseClient->shouldNotHaveReceived('startTraceSpan');
