@@ -7,30 +7,60 @@ on:
   pull_request:
 
 jobs:
-  php-tests:
-    name: PHPStan and Pest on PHP ${{ matrix.php-versions }}
+  compatibility:
+    name: Laravel ${{ matrix.laravel }} on PHP ${{ matrix.php }}
     runs-on: ubuntu-latest
 
     strategy:
       fail-fast: false
       matrix:
-        php-versions: [7.4, 8.0, 8.1, 8.2, 8.3, 8.4]
+        include:
+          - laravel: '8'
+            php: '7.4'
+            testbench: '^6'
+            phpunit: '^9'
+          - laravel: '9'
+            php: '8.0'
+            testbench: '^7'
+            phpunit: '^9'
+          - laravel: '10'
+            php: '8.1'
+            testbench: '^8'
+            phpunit: '^10'
+          - laravel: '11'
+            php: '8.2'
+            testbench: '^9'
+            phpunit: '^10'
+          - laravel: '12'
+            php: '8.3'
+            testbench: '^10'
+            phpunit: '^11'
+          - laravel: '13'
+            php: '8.4'
+            testbench: '11.x-dev'
+            phpunit: '^12'
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Set up PHP ${{ matrix.php-versions }}
+      - name: Set up PHP ${{ matrix.php }}
         uses: shivammathur/setup-php@v2
         with:
-          php-version: ${{ matrix.php-versions }}
+          php-version: ${{ matrix.php }}
           tools: composer
 
       - name: Install Perfbase
         run: bash -c "$(curl -fsSL https://cdn.perfbase.com/install.sh)"
-      
-      - name: Install dependencies
-        run: composer install --prefer-dist --no-progress
+
+      - name: Resolve Laravel ${{ matrix.laravel }} test stack
+        run: >
+          composer update
+          --with "illuminate/support:^${{ matrix.laravel }}.0"
+          --with "orchestra/testbench:${{ matrix.testbench }}"
+          --with "phpunit/phpunit:${{ matrix.phpunit }}"
+          --prefer-dist
+          --no-progress
 
       - name: Run PHPStan
         run: vendor/bin/phpstan analyse -c phpstan.neon --memory-limit=1G
