@@ -27,6 +27,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Debug Mode
+    |--------------------------------------------------------------------------
+    */
+    'debug' => env('PERFBASE_DEBUG', false),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Log Errors
+    |--------------------------------------------------------------------------
+    */
+    'log_errors' => env('PERFBASE_LOG_ERRORS', true),
+
+    /*
+    |--------------------------------------------------------------------------
     | API Key - Required - Used to authenticate your project with Perfbase.
     |--------------------------------------------------------------------------
     |
@@ -53,35 +67,17 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Sending Configuration - Used to control when data is sent to Perfbase.
+    | HTTP Timeout - Timeout in seconds for API requests.
     |--------------------------------------------------------------------------
-    |
-    | If you'd like to buffer data before sending it to Perfbase, you can configure
-    | the `mode` option in the transmission settings. The available mode values are:
-    | - 'sync': Sends data immediately without buffering.
-    | - 'file': Stores data in files before sending it to Perfbase.
-    | - 'database': Caches data in a database table before sending.
-    |
-    | When using modes other than 'sync', data will be collected locally.
-    | To process and send this buffered data to Perfbase, use the `perfbase:sync`
-    | Artisan command. It's recommended to set up a cron to periodically run it.
-    |
     */
-    'sending' => [
-        'mode' => env('PERFBASE_SENDING_MODE', 'sync'),
-        'timeout' => env('PERFBASE_TIMEOUT', 5),
-        'proxy' => env('PERFBASE_PROXY'),
-        'config' => [
-            'sync' => [],
-            'file' => [
-                'path' => storage_path('perfbase'),
-            ],
-            'database' => [
-                'connection' => 'default',
-                'table' => 'perfbase_cache',
-            ]
-        ]
-    ],
+    'timeout' => env('PERFBASE_TIMEOUT', 5),
+
+    /*
+    |--------------------------------------------------------------------------
+    | HTTP Proxy - Optional proxy for API requests.
+    |--------------------------------------------------------------------------
+    */
+    'proxy' => env('PERFBASE_PROXY'),
 
     /*
     |--------------------------------------------------------------------------
@@ -159,10 +155,8 @@ return [
     */
     'include' => [
         'http' => ['.*'],
-        'artisan' => ['.*'],
-        'jobs' => ['.*'],
-        'schedule' => ['.*'],
-        'exception' => ['.*'],
+        'console' => ['.*'],
+        'queue' => ['.*'],
     ],
 
     /*
@@ -176,10 +170,8 @@ return [
     */
     'exclude' => [
         'http' => [],
-        'artisan' => ['queue:work'],
-        'jobs' => [],
-        'schedule' => [],
-        'exception' => [],
+        'console' => ['queue:work'],
+        'queue' => [],
     ],
 
 ];

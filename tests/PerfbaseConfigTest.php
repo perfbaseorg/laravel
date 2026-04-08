@@ -180,47 +180,20 @@ class PerfbaseConfigTest extends TestCase
         $this->assertEquals(1.0, PerfbaseConfig::sampleRate());
     }
 
-    public function testSendingModeMethod()
-    {
-        config(['perfbase.sending.mode' => 'async']);
-        PerfbaseConfig::clearCache();
-        
-        $this->assertEquals('async', PerfbaseConfig::sendingMode());
-    }
-
-    public function testSendingModeMethodDefault()
-    {
-        // Don't set perfbase.sending.mode
-        PerfbaseConfig::clearCache();
-        
-        $this->assertEquals('sync', PerfbaseConfig::sendingMode()); // Should default to 'sync'
-    }
-
-    public function testSendingModeMethodWithNestedConfig()
-    {
-        config(['perfbase.sending' => ['mode' => 'database', 'timeout' => 10]]);
-        PerfbaseConfig::clearCache();
-        
-        $this->assertEquals('database', PerfbaseConfig::sendingMode());
-    }
-
     public function testMultipleCallsUseSameCache()
     {
         config([
             'perfbase.enabled' => true,
             'perfbase.sample_rate' => 0.8,
-            'perfbase.sending.mode' => 'file'
         ]);
         PerfbaseConfig::clearCache();
-        
+
         // Multiple calls to different methods
         $enabled = PerfbaseConfig::enabled();
         $sampleRate = PerfbaseConfig::sampleRate();
-        $sendingMode = PerfbaseConfig::sendingMode();
-        
+
         $this->assertTrue($enabled);
         $this->assertEquals(0.8, $sampleRate);
-        $this->assertEquals('file', $sendingMode);
     }
 
     public function testCacheIsSharedAcrossMethods()
@@ -331,18 +304,17 @@ class PerfbaseConfigTest extends TestCase
         config([
             'perfbase.enabled' => true,
             'perfbase.sample_rate' => 0.75,
-            'perfbase.sending.mode' => 'database'
         ]);
-        
+
         // First call to enabled() should populate cache
         PerfbaseConfig::enabled();
-        
+
         // Change config
         config(['perfbase.enabled' => false]);
-        
+
         // Second call should return cached value
         $this->assertTrue(PerfbaseConfig::enabled());
-        
+
         // Clear cache and try again
         PerfbaseConfig::clearCache();
         $this->assertFalse(PerfbaseConfig::enabled());

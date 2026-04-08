@@ -1,6 +1,6 @@
 <?php
 
-use Perfbase\Laravel\Profiling\HttpProfiler;
+use Perfbase\Laravel\Support\FilterMatcher;
 use PHPUnit\Framework\TestCase;
 
 class MatchesFiltersTest extends TestCase
@@ -15,61 +15,59 @@ class MatchesFiltersTest extends TestCase
             'UserController',
         ];
 
-        // Test cases
         $testCases = [
             [
                 'filters' => ['GET /'],
-                'expected' => true, // Exact match
+                'expected' => true,
             ],
             [
                 'filters' => ['POST /api/*'],
-                'expected' => true, // Matches with "*"
+                'expected' => true,
             ],
             [
                 'filters' => ['App\Http\Controllers*'],
-                'expected' => true, // Namespace prefix match with wildcard
+                'expected' => true,
             ],
             [
                 'filters' => ['UserController'],
-                'expected' => true, // Exact match for controller
+                'expected' => true,
             ],
             [
                 'filters' => ['/^App\\\\Http\\\\Controllers\\\\.*$/'],
-                'expected' => true, // Full regex match
+                'expected' => true,
             ],
             [
                 'filters' => ['GET /invalid', 'POST /other'],
-                'expected' => false, // No matches
+                'expected' => false,
             ],
             [
                 'filters' => [],
-                'expected' => false, // Empty filters should never match
+                'expected' => false,
             ],
             [
                 'filters' => ['*'],
-                'expected' => true, // Match all
+                'expected' => true,
             ],
             [
                 'filters' => ['/^GET \/example\/([0-9]+)\/$/'],
-                'expected' => false, // Assuming no component matches this regex
+                'expected' => false,
             ],
             [
                 'filters' => ['GET /example/*'],
-                'expected' => false, // Assuming no component starts with 'GET /example/'
+                'expected' => false,
             ],
             [
                 'filters' => ['GET /example'],
-                'expected' => true, // Exact match not present in components
+                'expected' => true,
             ],
             [
                 'filters' => ['UserController', 'App\Http\Controllers'],
-                'expected' => true, // Should match 'UserController' and 'App\Http\Controllers\UserController'
+                'expected' => true,
             ],
         ];
 
-        // Run each test case
         foreach ($testCases as $case) {
-            $result = HttpProfiler::matchesFilters($components, $case['filters']);
+            $result = FilterMatcher::matches($components, $case['filters']);
             $this->assertSame($case['expected'], $result, 'Failed matching filters: "' . implode('" and "', $case['filters']) . '" against "' . implode('", "', $components) . '"');
         }
     }

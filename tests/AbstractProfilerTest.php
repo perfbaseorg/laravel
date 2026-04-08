@@ -4,13 +4,12 @@ namespace Tests;
 
 require_once __DIR__ . '/TestHelpers.php';
 
-use Illuminate\Support\Facades\File;
 use Orchestra\Testbench\TestCase;
-use Perfbase\Laravel\Caching\FileStrategy;
 use Perfbase\Laravel\Profiling\AbstractProfiler;
 use Perfbase\Laravel\PerfbaseServiceProvider;
 use Perfbase\SDK\Config;
 use Perfbase\SDK\Perfbase as PerfbaseClient;
+use Perfbase\SDK\SubmitResult;
 use RuntimeException;
 use ReflectionClass;
 use Mockery;
@@ -29,7 +28,6 @@ class AbstractProfilerTest extends TestCase
     private ConcreteProfiler $profiler;
     private ReflectionClass $reflection;
     private $perfbaseClient;
-    private string $testPath;
 
     protected function getPackageProviders($app): array
     {
@@ -47,30 +45,19 @@ class AbstractProfilerTest extends TestCase
         $this->perfbaseClient->allows('startTraceSpan')->andReturns(true);
         $this->perfbaseClient->allows('stopTraceSpan')->andReturns(true);
         $this->perfbaseClient->allows('setAttribute')->andReturns(true);
-        $this->perfbaseClient->allows('submitTrace')->andReturns(true);
+        $this->perfbaseClient->allows('submitTrace')->andReturns(SubmitResult::success());
         $this->perfbaseClient->allows('getTraceData')->andReturns('serialized_trace_data');
         $this->perfbaseClient->allows('reset')->andReturns(true);
         
         $this->app->instance(Config::class, $config);
         $this->app->instance(PerfbaseClient::class, $this->perfbaseClient);
-        
-        // Set up file path for cache tests
-        $this->testPath = storage_path('testing/perfbase');
-        
+
         // Set up basic config
         config([
             'perfbase' => [
                 'enabled' => true,
                 'api_key' => 'test-key',
                 'sample_rate' => 1.0,
-                'sending' => [
-                    'mode' => 'sync',
-                    'config' => [
-                        'file' => [
-                            'path' => $this->testPath
-                        ]
-                    ]
-                ],
             ],
             'app' => [
                 'env' => 'testing',
@@ -84,10 +71,6 @@ class AbstractProfilerTest extends TestCase
 
     protected function tearDown(): void
     {
-        if (File::exists($this->testPath)) {
-            File::deleteDirectory($this->testPath);
-        }
-        
         Mockery::close();
         parent::tearDown();
     }
@@ -168,16 +151,18 @@ class AbstractProfilerTest extends TestCase
     public function testSetDefaultAttributes()
     {
         $this->callPrivateMethod('setDefaultAttributes');
-        
+
         $attributes = $this->getPrivateProperty('attributes');
-        
+
         $this->assertArrayHasKey('hostname', $attributes);
         $this->assertArrayHasKey('environment', $attributes);
         $this->assertArrayHasKey('app_version', $attributes);
         $this->assertArrayHasKey('php_version', $attributes);
-        $this->assertArrayHasKey('user_ip', $attributes);
-        $this->assertArrayHasKey('user_agent', $attributes);
-        
+
+        // user_ip and user_agent are HTTP-only, not in base defaults
+        $this->assertArrayNotHasKey('user_ip', $attributes);
+        $this->assertArrayNotHasKey('user_agent', $attributes);
+
         $this->assertEquals('testing', $attributes['environment']);
         $this->assertEquals('1.0.0', $attributes['app_version']);
         $this->assertEquals(phpversion(), $attributes['php_version']);
@@ -211,57 +196,82 @@ class AbstractProfilerTest extends TestCase
         $this->assertTrue(true); // Explicit assertion
     }
 
-    public function testStopProfilingWithSyncMode()
+    public function testStopProfilingSubmitsTrace()
     {
-        config(['perfbase.sending.mode' => 'sync']);
-        
         // Just test that the method can be called without errors
         $this->profiler->setAttribute('test', 'value');
         $this->profiler->stopProfiling();
-        
-        // Verify config was set correctly
-        $this->assertEquals('sync', config('perfbase.sending.mode'));
-        $this->assertTrue(true);
-    }
 
-    public function testStopProfilingWithFileMode()
-    {
-        config(['perfbase.sending.mode' => 'file']);
-        
-        // Mock File facade to avoid actual file operations
-        File::shouldReceive('exists')
-            ->andReturn(false);
-        File::shouldReceive('makeDirectory')
-            ->andReturn(true);
-        File::shouldReceive('put')
-            ->andReturn(true);
-        
-        $this->profiler->stopProfiling();
-        
-        // Verify config was set correctly
-        $this->assertEquals('file', config('perfbase.sending.mode'));
         $this->assertTrue(true);
-    }
-
-    public function testStopProfilingWithInvalidSendingMode()
-    {
-        config(['perfbase.sending.mode' => 'invalid']);
-        
-        // Test that invalid mode is set
-        $this->assertEquals('invalid', config('perfbase.sending.mode'));
-        
-        // Expect the RuntimeException for invalid sending mode
-        $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Invalid sending mode specified in the configuration.');
-        
-        $this->profiler->stopProfiling();
     }
 
     public function testStopProfilingWhenSpanNotStarted()
     {
-        // Just test that method can be called
-        $this->profiler->stopProfiling();
+        // Create a client mock where stopTraceSpan returns false
+        $client = Mockery::mock(PerfbaseClient::class);
+        $client->allows('isExtensionAvailable')->andReturns(true);
+        $client->allows('startTraceSpan');
+        $client->allows('stopTraceSpan')->andReturns(false);
+        $client->allows('setAttribute');
+        $client->allows('reset');
+        // submitTrace should NOT be called
+        $client->shouldNotReceive('submitTrace');
+
+        $this->app->instance(PerfbaseClient::class, $client);
+
+        $profiler = new ConcreteProfiler('not_started');
+        $profiler->stopProfiling();
+
         $this->assertTrue(true);
+    }
+
+    public function testStopProfilingLogsOnSubmitFailure()
+    {
+        // Override mock to return failure
+        $failClient = Mockery::mock(PerfbaseClient::class);
+        $failClient->allows('isExtensionAvailable')->andReturns(true);
+        $failClient->allows('startTraceSpan');
+        $failClient->allows('stopTraceSpan')->andReturns(true);
+        $failClient->allows('setAttribute');
+        $failClient->allows('submitTrace')->andReturns(
+            SubmitResult::retryableFailure(503, 'Service Unavailable')
+        );
+        $failClient->allows('reset');
+
+        $this->app->instance(PerfbaseClient::class, $failClient);
+
+        config(['perfbase.debug' => false, 'perfbase.log_errors' => false]);
+
+        $profiler = new ConcreteProfiler('fail_span');
+        // Should not throw even though submission failed
+        $profiler->stopProfiling();
+
+        $this->assertTrue(true);
+    }
+
+    public function testStopProfilingThrowsInDebugModeOnFailure()
+    {
+        $failClient = Mockery::mock(PerfbaseClient::class);
+        $failClient->allows('isExtensionAvailable')->andReturns(true);
+        $failClient->allows('startTraceSpan');
+        $failClient->allows('stopTraceSpan')->andReturns(true);
+        $failClient->allows('setAttribute');
+        $failClient->allows('submitTrace')->andReturns(
+            SubmitResult::permanentFailure(401, 'Unauthorized')
+        );
+        $failClient->allows('reset');
+
+        $this->app->instance(PerfbaseClient::class, $failClient);
+
+        config(['perfbase.debug' => true]);
+        \Perfbase\Laravel\Support\PerfbaseConfig::clearCache();
+
+        $profiler = new ConcreteProfiler('debug_span');
+
+        $this->expectException(\Perfbase\SDK\Exception\PerfbaseException::class);
+        $this->expectExceptionMessage('Trace submission failed');
+
+        $profiler->stopProfiling();
     }
 
     private function callPrivateMethod(string $methodName, array $args = [])

@@ -8,6 +8,7 @@ use Perfbase\Laravel\PerfbaseServiceProvider;
 use Perfbase\SDK\Config;
 use Perfbase\SDK\Extension\ExtensionInterface;
 use Perfbase\SDK\Perfbase as PerfbaseClient;
+use Perfbase\SDK\SubmitResult;
 use Mockery;
 
 class PerfbaseFacadeTest extends TestCase
@@ -37,10 +38,8 @@ class PerfbaseFacadeTest extends TestCase
                 'enabled' => true,
                 'api_key' => 'test-key',
                 'flags' => 0,
-                'sending' => [
-                    'proxy' => null,
-                    'timeout' => 5,
-                ],
+                'proxy' => null,
+                'timeout' => 5,
             ]
         ]);
     }
@@ -105,16 +104,14 @@ class PerfbaseFacadeTest extends TestCase
 
     public function testSubmitTraceMethod()
     {
-        // Mock the Perfbase client
         $mockClient = Mockery::mock(PerfbaseClient::class);
-        $mockClient->shouldReceive('submitTrace')->once()->andReturn();
-        
+        $mockClient->shouldReceive('submitTrace')->once()->andReturn(SubmitResult::success());
+
         $this->app->instance(PerfbaseClient::class, $mockClient);
-        
-        Perfbase::submitTrace();
-        
-        $mockClient->shouldHaveReceived('submitTrace')->once();
-        $this->assertTrue(true); // Assert that we got this far
+
+        $result = Perfbase::submitTrace();
+
+        $this->assertTrue($result->isSuccess());
     }
 
     public function testGetTraceDataMethod()
@@ -284,7 +281,7 @@ class PerfbaseFacadeTest extends TestCase
         
         $this->assertStringContainsString('@method static void startTraceSpan(string $spanName, array<string, string> $attributes = [])', $docComment);
         $this->assertStringContainsString('@method static bool stopTraceSpan(string $spanName)', $docComment);
-        $this->assertStringContainsString('@method static void submitTrace()', $docComment);
+        $this->assertStringContainsString('@method static \Perfbase\SDK\SubmitResult submitTrace()', $docComment);
         $this->assertStringContainsString('@method static string getTraceData(string $spanName = \'\')', $docComment);
         $this->assertStringContainsString('@method static void reset()', $docComment);
         $this->assertStringContainsString('@method static bool isExtensionAvailable()', $docComment);

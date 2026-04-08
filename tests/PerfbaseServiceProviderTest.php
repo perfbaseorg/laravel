@@ -44,10 +44,8 @@ class PerfbaseServiceProviderTest extends TestCase
                 'enabled' => true,
                 'api_key' => 'test-key',
                 'flags' => 0,
-                'sending' => [
-                    'proxy' => null,
-                    'timeout' => 5,
-                ],
+                'proxy' => null,
+                'timeout' => 5,
             ]
         ]);
     }
@@ -93,7 +91,7 @@ class PerfbaseServiceProviderTest extends TestCase
         $this->assertArrayHasKey('enabled', $config);
         $this->assertArrayHasKey('api_key', $config);
         $this->assertArrayHasKey('sample_rate', $config);
-        $this->assertArrayHasKey('sending', $config);
+        $this->assertArrayHasKey('timeout', $config);
         $this->assertArrayHasKey('include', $config);
         $this->assertArrayHasKey('exclude', $config);
     }
@@ -176,19 +174,19 @@ class PerfbaseServiceProviderTest extends TestCase
 
     public function testConfigBindingHandlesNullProxy()
     {
-        config(['perfbase.sending.proxy' => null]);
-        
+        config(['perfbase.proxy' => null]);
+
         $config = $this->app->make(Config::class);
-        
+
         $this->assertInstanceOf(Config::class, $config);
     }
 
     public function testConfigBindingHandlesStringProxy()
     {
-        config(['perfbase.sending.proxy' => 'http://proxy.example.com']);
-        
+        config(['perfbase.proxy' => 'http://proxy.example.com']);
+
         $config = $this->app->make(Config::class);
-        
+
         $this->assertInstanceOf(Config::class, $config);
     }
 

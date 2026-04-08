@@ -47,16 +47,6 @@ class PerfbaseConfig
     }
 
     /**
-     * Get the sending mode
-     *
-     * @return string
-     */
-    public static function sendingMode(): string
-    {
-        return self::get('sending.mode', 'sync');
-    }
-
-    /**
      * Clear the cache (useful for testing)
      *
      * @return void

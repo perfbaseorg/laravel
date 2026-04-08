@@ -1,289 +1,331 @@
-# Perfbase for Laravel
+<p align="center">
+  <a href="https://perfbase.com">
+    <img src="https://cdn.perfbase.com/img/logo-full.svg" alt="Perfbase" width="300">
+  </a>
+</p>
 
-[![Packagist License](https://img.shields.io/packagist/l/perfbase/laravel)](https://github.com/perfbaseorg/laravel/blob/main/LICENSE.txt)
-[![Packagist Version](https://img.shields.io/packagist/v/perfbase/laravel)](https://packagist.org/packages/perfbase/laravel)
-[![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/perfbaseorg/laravel/ci.yml?branch=main)](https://github.com/perfbaseorg/laravel/actions/workflows/ci.yml)
+<h3 align="center">Perfbase for Laravel</h3>
+<p align="center">
+  Laravel integration for <a href="https://perfbase.com">Perfbase</a>.
+</p>
 
-Seamless Laravel integration for Perfbase - a comprehensive Application Performance Monitoring (APM) solution that provides real-time insights into your Laravel application's performance, database queries, HTTP requests, queue jobs, and more.
+<p align="center">
+  <a href="https://packagist.org/packages/perfbase/laravel"><img src="https://img.shields.io/packagist/v/perfbase/laravel" alt="Packagist Version"></a>
+  <a href="https://github.com/perfbaseorg/laravel/blob/main/LICENSE.txt"><img src="https://img.shields.io/packagist/l/perfbase/laravel" alt="License"></a>
+  <a href="https://github.com/perfbaseorg/laravel/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/perfbaseorg/laravel/ci.yml?branch=main" alt="CI"></a>
+  <img src="https://img.shields.io/badge/php-7.4%2B-blue" alt="PHP Version">
+  <img src="https://img.shields.io/badge/laravel-8.x--12.x-blue" alt="Laravel Version">
+</p>
 
-## Features
+This package is a thin adapter over [`perfbase/php-sdk`](https://packagist.org/packages/perfbase/php-sdk). It wires Laravel request, console, and queue lifecycles into the SDK and leaves trace transport, submission, and extension handling to the shared SDK.
 
-- 🚀 **Automatic Profiling** - HTTP requests, console commands, and queue jobs
-- 📊 **Multi-span Tracing** - Track nested operations within requests
-- 🔍 **Database Query Monitoring** - Monitor all database operations with timing
-- 🌐 **HTTP Request Tracking** - Monitor outbound API calls and their performance  
-- ⚡ **Queue Job Profiling** - Track background job performance and failures
-- 🏷️ **Custom Attributes** - Add contextual metadata to traces
-- 🎯 **Smart Sampling** - Control data collection with configurable sample rates
-- 💾 **Flexible Data Storage** - Sync immediately or buffer locally (file/database)
-- 🔧 **Granular Control** - Include/exclude specific routes, commands, or jobs
-- 🛡️ **Multi-tenant Support** - Organization and project-level data isolation
+## What it profiles
+
+- HTTP requests when the Perfbase middleware is installed
+- Artisan commands through Laravel console events
+- Queue jobs through Laravel queue events
+- Manual custom spans through the `Perfbase` facade or injected SDK client
 
 ## Requirements
 
-- **PHP**: 7.4 to 8.4
-- **Laravel**: 8.0, 9.0, 10.0, 11.0, or 12.0
-- **Extensions**: 
-  - `ext-json` (usually enabled by default)
-  - `ext-zlib` (usually enabled by default)
-  - `ext-perfbase` (Perfbase PHP extension)
-- **Dependencies**: Guzzle HTTP 7.0+
+- PHP `7.4` to `8.5`
+- Laravel `8.x`, `9.x`, `10.x`, `11.x`, or `12.x`
+- `ext-json`
+- `ext-zlib`
+- `ext-perfbase`
 
 ## Installation
 
-### 1. Install the Package
+Install the package from Packagist:
 
 ```bash
-composer require perfbase/laravel
+composer require perfbase/laravel:^1.0
 ```
 
-### 2. Install the Perfbase PHP Extension
-
-The `ext-perfbase` PHP extension is required. Install it using:
+Install the native Perfbase extension if it is not already available:
 
 ```bash
 bash -c "$(curl -fsSL https://cdn.perfbase.com/install.sh)"
 ```
 
-**Important**: Restart your web server after installation.
+Restart PHP-FPM, Octane workers, Horizon workers, or your web server after installing the extension.
 
-### 3. Publish Configuration
+Publish the config file:
 
 ```bash
 php artisan vendor:publish --tag="perfbase-config"
 ```
 
-This creates `config/perfbase.php` with all available options.
-
-### 4. Configure Environment
-
-Add to your `.env` file:
+Add the minimum environment variables:
 
 ```env
 PERFBASE_ENABLED=true
 PERFBASE_API_KEY=your_api_key_here
 PERFBASE_SAMPLE_RATE=0.1
-PERFBASE_SENDING_MODE=sync
 ```
 
-### 5. Add Middleware (Optional but Recommended)
+### HTTP middleware
 
-For HTTP request profiling, add the middleware to your HTTP kernel:
+HTTP profiling is enabled only when the middleware is present.
+
+For Laravel 8 to 10, add it to `app/Http/Kernel.php`:
 
 ```php
-// app/Http/Kernel.php
 protected $middleware = [
-    // ... other middleware
+    // ...
     \Perfbase\Laravel\Middleware\PerfbaseMiddleware::class,
 ];
 ```
 
-Or apply to specific route groups:
+Or attach it to a middleware group:
 
 ```php
-// app/Http/Kernel.php
 protected $middlewareGroups = [
     'web' => [
-        // ... other middleware
+        // ...
         \Perfbase\Laravel\Middleware\PerfbaseMiddleware::class,
     ],
 ];
 ```
 
-## Configuration
-
-### Basic Configuration
-
-The package auto-registers and provides several configuration options:
+For Laravel 11+, register it in `bootstrap/app.php`:
 
 ```php
-// config/perfbase.php
+use Illuminate\Foundation\Application;
+use Illuminate\Foundation\Configuration\Middleware;
+use Perfbase\Laravel\Middleware\PerfbaseMiddleware;
+
+return Application::configure(dirname(__DIR__))
+    ->withMiddleware(function (Middleware $middleware) {
+        $middleware->append(PerfbaseMiddleware::class);
+    })
+    ->create();
+```
+
+Console and queue profiling do not need middleware. They are wired through the package service provider.
+
+## Configuration
+
+Published config lives at `config/perfbase.php`.
+
+```php
 return [
     'enabled' => env('PERFBASE_ENABLED', false),
+    'debug' => env('PERFBASE_DEBUG', false),
+    'log_errors' => env('PERFBASE_LOG_ERRORS', true),
     'api_key' => env('PERFBASE_API_KEY'),
     'sample_rate' => env('PERFBASE_SAMPLE_RATE', 0.1),
-    
-    'sending' => [
-        'mode' => env('PERFBASE_SENDING_MODE', 'sync'),
-        'timeout' => env('PERFBASE_TIMEOUT', 5),
-        'proxy' => env('PERFBASE_PROXY'),
-    ],
-    
+    'timeout' => env('PERFBASE_TIMEOUT', 5),
+    'proxy' => env('PERFBASE_PROXY'),
     'flags' => env('PERFBASE_FLAGS', \Perfbase\SDK\FeatureFlags::DefaultFlags),
-    // ... more options
+    'include' => [
+        'http' => ['.*'],
+        'console' => ['.*'],
+        'queue' => ['.*'],
+    ],
+    'exclude' => [
+        'http' => [],
+        'console' => ['queue:work'],
+        'queue' => [],
+    ],
 ];
 ```
 
-### Environment Variables
+### Environment variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PERFBASE_ENABLED` | `false` | Enable/disable profiling |
-| `PERFBASE_API_KEY` | `null` | Your Perfbase API key (required) |
-| `PERFBASE_SAMPLE_RATE` | `0.1` | Sampling rate (0.0 to 1.0) |
-| `PERFBASE_SENDING_MODE` | `sync` | Data sending mode (`sync`, `file`, `database`) |
-| `PERFBASE_TIMEOUT` | `5` | API request timeout in seconds |
-| `PERFBASE_PROXY` | `null` | HTTP proxy URL |
-| `PERFBASE_FLAGS` | Default flags | Profiling feature flags |
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `PERFBASE_ENABLED` | `false` | Global on/off switch |
+| `PERFBASE_API_KEY` | `null` | Perfbase API key |
+| `PERFBASE_SAMPLE_RATE` | `0.1` | Sampling rate from `0.0` to `1.0` |
+| `PERFBASE_DEBUG` | `false` | Re-throw profiling exceptions |
+| `PERFBASE_LOG_ERRORS` | `true` | Log profiling failures when debug is off |
+| `PERFBASE_TIMEOUT` | `5` | Trace submission timeout in seconds |
+| `PERFBASE_PROXY` | `null` | Optional outbound proxy |
+| `PERFBASE_FLAGS` | `FeatureFlags::DefaultFlags` | Perfbase extension feature flags |
 
-### Sending Modes
-
-#### Sync Mode (Default)
-Data is sent immediately to Perfbase:
-```env
-PERFBASE_SENDING_MODE=sync
-```
-
-#### File Buffering
-Data is stored in local files and sent later:
-```env
-PERFBASE_SENDING_MODE=file
-```
-
-#### Database Buffering  
-Data is cached in your database and sent later:
-```env
-PERFBASE_SENDING_MODE=database
-```
-
-### Profiling Features Control
-
-Control which profiling features are enabled:
+### Feature flags
 
 ```php
 use Perfbase\SDK\FeatureFlags;
 
-// In config/perfbase.php
-'flags' => FeatureFlags::DefaultFlags, // Recommended for most apps
-'flags' => FeatureFlags::AllFlags,     // All available features
-'flags' => FeatureFlags::TrackCpuTime | FeatureFlags::TrackPdo, // Custom combination
+'flags' => FeatureFlags::DefaultFlags;
+'flags' => FeatureFlags::AllFlags;
+'flags' => FeatureFlags::TrackCpuTime | FeatureFlags::TrackPdo;
 ```
 
-Available flags:
-- `UseCoarseClock` - Faster timing (reduced overhead)
-- `TrackCpuTime` - Monitor CPU time usage
-- `TrackMemoryAllocation` - Track memory allocation patterns
-- `TrackPdo` - Monitor database queries
-- `TrackHttp` - Track outbound HTTP requests
-- `TrackCaches` - Monitor cache operations
-- `TrackMongodb` - Track MongoDB operations
-- `TrackElasticsearch` - Monitor Elasticsearch queries
-- `TrackQueues` - Track queue/background jobs
-- `TrackAwsSdk` - Monitor AWS SDK operations
-- `TrackFileOperations` - Track file I/O operations
+Common flags:
 
-### Include/Exclude Filters
+- `UseCoarseClock`
+- `TrackCpuTime`
+- `TrackMemoryAllocation`
+- `TrackPdo`
+- `TrackHttp`
+- `TrackCaches`
+- `TrackMongodb`
+- `TrackElasticsearch`
+- `TrackQueues`
+- `TrackAwsSdk`
+- `TrackFileOperations`
+- `TrackFileCompilation`
+- `TrackFileDefinitions`
+- `TrackExceptions`
 
-Control which routes, commands, and jobs are profiled:
+### Include and exclude filters
+
+Filters are split by context: `http`, `console`, and `queue`.
 
 ```php
-// config/perfbase.php
 'include' => [
-    'http' => [
-        'api/*',
-        'admin/*'
-    ],
-    'console' => [
-        'app:*',
-        'queue:*'
-    ],
-    'queue' => [
-        'App\\Jobs\\*'
-    ]
+    'http' => ['GET /api/*', 'POST /checkout'],
+    'console' => ['migrate*', 'app:*'],
+    'queue' => ['App\\Jobs\\Important*'],
 ],
 
 'exclude' => [
-    'http' => [
-        'health-check',
-        '_debugbar/*'
-    ],
-    'console' => [
-        'horizon:*',
-        'telescope:*'
-    ],
-    'queue' => [
-        'App\\Jobs\\DebugJob'
-    ]
-]
+    'http' => ['GET /health*', '_debugbar/*'],
+    'console' => ['queue:work', 'horizon:*'],
+    'queue' => ['App\\Jobs\\NoisyDebugJob'],
+],
 ```
 
-## Usage
+Supported filter styles:
 
-### Automatic Profiling
+- Wildcards like `GET /api/*`
+- Regex patterns like `/^POST \/checkout/`
+- Command patterns like `queue:*`
+- Job class patterns like `App\\Jobs\\*`
+- Controller or action strings matched through Laravel's string matcher
 
-Once configured, Perfbase automatically profiles:
+## How it behaves
 
-- **HTTP Requests** (when middleware is added)
-- **Console Commands** (all artisan commands)
-- **Queue Jobs** (all queued jobs)
+### HTTP requests
 
-### Manual Profiling
+`PerfbaseMiddleware` creates an `HttpTraceLifecycle` for the current request.
 
-Use the facade for custom profiling:
+Recorded attributes include:
+
+- `source=http`
+- `action`
+- `http_method`
+- `http_url`
+- `http_status_code`
+- `user_ip`
+- `user_agent`
+- `user_id` when available
+- `environment`
+- `app_version`
+- `hostname`
+- `php_version`
+
+### Console commands
+
+The service provider listens to Laravel console events and creates a `ConsoleTraceLifecycle`.
+
+Recorded attributes include:
+
+- `source=console`
+- `action`
+- `exit_code`
+- `exception` when present
+- `environment`
+- `app_version`
+- `hostname`
+- `php_version`
+
+### Queue jobs
+
+The service provider listens to queue worker events and creates a `QueueTraceLifecycle`.
+
+Recorded attributes include:
+
+- `source=queue`
+- `action`
+- `queue`
+- `connection`
+- `exception` when present
+- `environment`
+- `app_version`
+- `hostname`
+- `php_version`
+
+## Manual spans
+
+Use the facade when you want custom spans inside your own application code:
 
 ```php
 use Perfbase\Laravel\Facades\Perfbase;
 
-// Start a custom span
 Perfbase::startTraceSpan('custom-operation', [
     'operation_type' => 'data_processing',
-    'record_count' => '1000'
+    'record_count' => '1000',
 ]);
 
-// Add attributes during execution
 Perfbase::setAttribute('processing_method', 'batch');
-Perfbase::setAttribute('memory_usage', memory_get_usage());
+Perfbase::setAttribute('memory_usage', (string) memory_get_usage());
 
 try {
-    // Your custom logic here
     processLargeDataset();
-    
     Perfbase::setAttribute('status', 'success');
-} catch (Exception $e) {
+} catch (\Exception $e) {
     Perfbase::setAttribute('status', 'error');
     Perfbase::setAttribute('error_message', $e->getMessage());
+    throw $e;
 } finally {
-    // Always stop the span
     Perfbase::stopTraceSpan('custom-operation');
 }
 
-// Submit the trace data
-Perfbase::submitTrace();
+$result = Perfbase::submitTrace();
+
+if (!$result->isSuccess()) {
+    logger()->warning('Perfbase trace submission failed', [
+        'status' => $result->getStatus(),
+        'message' => $result->getMessage(),
+        'status_code' => $result->getStatusCode(),
+    ]);
+}
 ```
 
-### Service Injection
+Note that Perfbase trace attributes are string values. Cast integers and booleans before passing them to `setAttribute()`.
 
-Use dependency injection in your services:
+## Dependency injection
+
+You can inject the SDK client directly:
 
 ```php
 use Perfbase\SDK\Perfbase;
 
 class DataProcessingService
 {
-    public function __construct(private Perfbase $perfbase)
+    /** @var Perfbase */
+    private $perfbase;
+
+    public function __construct(Perfbase $perfbase)
     {
+        $this->perfbase = $perfbase;
     }
-    
+
     public function processData(array $data): array
     {
         $this->perfbase->startTraceSpan('data-processing', [
-            'record_count' => count($data),
-            'data_type' => 'user_records'
+            'record_count' => (string) count($data),
+            'data_type' => 'user_records',
         ]);
-        
-        $result = $this->performProcessing($data);
-        
-        $this->perfbase->setAttribute('processed_count', count($result));
-        $this->perfbase->stopTraceSpan('data-processing');
-        
-        return $result;
+
+        try {
+            $result = $this->performProcessing($data);
+            $this->perfbase->setAttribute('processed_count', (string) count($result));
+            return $result;
+        } finally {
+            $this->perfbase->stopTraceSpan('data-processing');
+        }
     }
 }
 ```
 
-### User-Specific Profiling
+## User-specific request profiling
 
-Profile specific users by implementing the `ProfiledUser` interface:
+If your authenticated user model implements `Perfbase\Laravel\Interfaces\ProfiledUser`, HTTP request profiling will respect `shouldBeProfiled()`.
 
 ```php
 use Perfbase\Laravel\Interfaces\ProfiledUser;
@@ -292,274 +334,79 @@ class User extends Authenticatable implements ProfiledUser
 {
     public function shouldBeProfiled(): bool
     {
-        // Profile admin users or users in beta testing
         return $this->isAdmin() || $this->isBetaTester();
     }
 }
 ```
 
-## Artisan Commands
+If the authenticated user does not implement `ProfiledUser`, the package falls back to normal request filtering rules.
 
-### Sync Buffered Data
-
-When using `file` or `database` sending modes, use this command to send buffered data:
-
-```bash
-# Send all buffered trace data to Perfbase
-php artisan perfbase:sync
-
-# Recommended: Set up a cron job
-# * * * * * cd /path-to-your-project && php artisan perfbase:sync >> /dev/null 2>&1
-```
-
-### Clear Buffered Data
-
-Remove all locally buffered traces:
-
-```bash
-# Clear all buffered data (useful for debugging)
-php artisan perfbase:clear
-```
-
-## Advanced Configuration
-
-### Database Strategy Setup
-
-When using `database` sending mode, you may need to run the migration:
-
-```bash
-php artisan migrate
-```
-
-The package includes a migration for the `perfbase_profiles` table.
-
-### Custom Cache Paths
-
-For file-based buffering, customize the storage path:
-
-```php
-// config/perfbase.php
-'sending' => [
-    'mode' => 'file',
-    'config' => [
-        'file' => [
-            'path' => storage_path('app/perfbase-cache'),
-        ],
-    ],
-],
-```
-
-### Performance Optimization
-
-For high-traffic applications:
-
-```php
-// config/perfbase.php
-'sample_rate' => 0.01, // Profile 1% of requests
-'flags' => \Perfbase\SDK\FeatureFlags::UseCoarseClock | 
-           \Perfbase\SDK\FeatureFlags::TrackCpuTime |
-           \Perfbase\SDK\FeatureFlags::TrackPdo,
-'sending' => ['mode' => 'file'], // Buffer locally
-```
-
-### Multi-Environment Setup
-
-```php
-// config/perfbase.php
-'enabled' => env('PERFBASE_ENABLED', app()->environment('production')),
-'sample_rate' => env('PERFBASE_SAMPLE_RATE', match(app()->environment()) {
-    'production' => 0.1,
-    'staging' => 0.5,
-    'local' => 1.0,
-    default => 0.1
-}),
-```
-
-## Facade Methods
-
-The Perfbase facade provides access to all SDK methods:
+## Facade methods
 
 | Method | Description |
-|--------|-------------|
-| `startTraceSpan($name, $attributes = [])` | Start profiling a named span |
-| `stopTraceSpan($name)` | Stop profiling a named span |
-| `setAttribute($key, $value)` | Add attribute to current trace |
-| `setFlags($flags)` | Change profiling feature flags |
-| `submitTrace()` | Submit trace data to Perfbase |
+| --- | --- |
+| `startTraceSpan($name, $attributes = [])` | Start a named span |
+| `stopTraceSpan($name)` | Stop a named span |
+| `setAttribute($key, $value)` | Add a string attribute to the current trace |
+| `setFlags($flags)` | Change extension feature flags |
+| `submitTrace()` | Submit trace data and return a `SubmitResult` |
 | `getTraceData($spanName = '')` | Get raw trace data |
-| `reset()` | Clear current trace session |
-| `isExtensionAvailable()` | Check if extension is loaded |
+| `reset()` | Clear the current trace session |
+| `isExtensionAvailable()` | Check whether the native extension is loaded |
 
-## Error Handling
+## Error handling
 
-The package handles errors gracefully:
+The package is designed to fail open in normal operation. When profiling cannot start or trace submission fails, your Laravel request, command, or job should continue running.
+
+Use `PERFBASE_DEBUG=true` if you want profiling exceptions to surface during local development.
+
+## Testing
+
+In application tests, it is often simplest to disable profiling:
+
+```xml
+<env name="PERFBASE_ENABLED" value="false"/>
+```
+
+You can also mock the facade:
 
 ```php
-// The package won't break your app if Perfbase is unavailable
-try {
-    Perfbase::startTraceSpan('critical-operation');
-    // Your code here
-} catch (\Perfbase\SDK\Exception\PerfbaseExtensionException $e) {
-    // Extension not available - log but continue
-    Log::warning('Perfbase extension not available: ' . $e->getMessage());
+use Perfbase\Laravel\Facades\Perfbase;
+
+public function test_something()
+{
+    Perfbase::shouldReceive('startTraceSpan')->once();
+    Perfbase::shouldReceive('stopTraceSpan')->once();
+
+    // ...
 }
 ```
 
 ## Troubleshooting
 
-### Extension Not Found
+### Extension not loaded
 
 ```bash
-# Check if extension is loaded
 php -m | grep perfbase
-
-# Check PHP configuration
 php --ini
-
-# Reinstall extension
 bash -c "$(curl -fsSL https://cdn.perfbase.com/install.sh)"
 ```
 
-### Permission Issues (File Mode)
+### High overhead
 
-```bash
-# Ensure storage directory is writable
-chmod -R 755 storage/perfbase
-chown -R www-data:www-data storage/perfbase
-```
-
-### High Memory Usage
-
-```php
-// Reduce profiling overhead
-'flags' => \Perfbase\SDK\FeatureFlags::UseCoarseClock | 
-           \Perfbase\SDK\FeatureFlags::TrackCpuTime,
-'sample_rate' => 0.01, // Lower sample rate
-```
-
-### Database Issues (Database Mode)
-
-```bash
-# Ensure migration is run
-php artisan migrate
-
-# Check database connection
-php artisan tinker
->>> DB::connection()->getPdo();
-```
-
-## Testing
-
-When testing your Laravel application:
-
-```php
-// Disable Perfbase in tests
-// phpunit.xml
-<env name="PERFBASE_ENABLED" value="false"/>
-
-// Or mock the facade in tests
-public function test_something()
-{
-    Perfbase::shouldReceive('startTraceSpan')->once();
-    Perfbase::shouldReceive('stopTraceSpan')->once();
-    
-    // Your test code
-}
-```
-
-## Performance Impact
-
-- **Minimal Overhead**: ~1-3ms per request with default settings
-- **Sampling**: Use sample rates to reduce impact in production
-- **Async Options**: File/database modes reduce request impact
-- **Selective Profiling**: Use include/exclude filters strategically
-
-## Security Considerations
-
-- **API Key Security**: Store API keys in environment variables, not code
-- **Data Privacy**: Configure include/exclude filters to avoid sensitive routes
-- **User Profiling**: Implement `ProfiledUser` interface to control user-specific profiling
-- **Network Security**: Use HTTPS endpoints and configure proxy if needed
-
-## Examples
-
-### E-commerce Checkout
-
-```php
-class CheckoutController extends Controller
-{
-    public function process(Request $request)
-    {
-        Perfbase::startTraceSpan('checkout-process', [
-            'user_id' => auth()->id(),
-            'cart_items' => $request->items->count(),
-            'payment_method' => $request->payment_method
-        ]);
-        
-        try {
-            $order = $this->createOrder($request);
-            $payment = $this->processPayment($order);
-            
-            Perfbase::setAttribute('order_id', $order->id);
-            Perfbase::setAttribute('payment_status', $payment->status);
-            
-            return response()->json(['order' => $order]);
-        } finally {
-            Perfbase::stopTraceSpan('checkout-process');
-        }
-    }
-}
-```
-
-### Background Job Processing
-
-```php
-class ProcessEmailCampaignJob implements ShouldQueue
-{
-    public function handle()
-    {
-        // Automatic profiling happens via queue listener
-        // But you can add custom spans for detailed tracking
-        
-        Perfbase::startTraceSpan('email-template-render');
-        $template = $this->renderTemplate();
-        Perfbase::stopTraceSpan('email-template-render');
-        
-        Perfbase::startTraceSpan('email-send-batch');
-        $this->sendEmails($template);
-        Perfbase::stopTraceSpan('email-send-batch');
-    }
-}
-```
+- Lower `PERFBASE_SAMPLE_RATE`
+- Use `FeatureFlags::UseCoarseClock`
+- Disable feature flags you do not need
+- Narrow your `include` filters and expand your `exclude` filters
 
 ## Documentation
 
-Comprehensive documentation is available at [https://docs.perfbase.com](https://docs.perfbase.com), including:
+Full documentation is available at [perfbase.com/docs](https://perfbase.com/docs).
 
-- Complete API reference
-- Framework-specific guides
-- Performance optimization tips
-- Data privacy and security policies
-- Troubleshooting guides
-
-## Contributing
-
-We welcome contributions! Please see our [contributing guidelines](CONTRIBUTING.md) and feel free to submit pull requests.
-
-## Security
-
-If you discover any security-related issues, please email [security@perfbase.com](mailto:security@perfbase.com) instead of using the issue tracker.
-
-## Support
-
-- **Email**: [support@perfbase.com](mailto:support@perfbase.com)
-- **Documentation**: [https://docs.perfbase.com](https://docs.perfbase.com)
-- **Issues**: [GitHub Issues](https://github.com/perfbaseorg/laravel/issues)
+- **Docs**: [perfbase.com/docs](https://perfbase.com/docs)
+- **Issues**: [github.com/perfbaseorg/laravel/issues](https://github.com/perfbaseorg/laravel/issues)
+- **Support**: [support@perfbase.com](mailto:support@perfbase.com)
 
 ## License
 
-This project is licensed under the Apache License 2.0. Please see the [License File](LICENSE.txt) for more information.
-
----
-
-**Made with ❤️ by the Perfbase team**
+Apache-2.0. See [LICENSE.txt](LICENSE.txt).

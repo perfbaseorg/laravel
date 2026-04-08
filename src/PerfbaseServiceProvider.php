@@ -11,47 +11,45 @@ use Illuminate\Queue\Events\JobProcessed;
 use Illuminate\Queue\Events\JobProcessing;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
+use Perfbase\Laravel\Lifecycle\ConsoleTraceLifecycle;
+use Perfbase\Laravel\Lifecycle\QueueTraceLifecycle;
 use Perfbase\Laravel\Profiling\AbstractProfiler;
-use Perfbase\Laravel\Profiling\ConsoleProfiler;
-use Perfbase\Laravel\Profiling\QueueProfiler;
-use Perfbase\Laravel\Profiling\UniversalProfiler;
 use Perfbase\Laravel\Support\PerfbaseConfig;
 use Perfbase\Laravel\Support\PerfbaseErrorHandling;
-use Perfbase\Laravel\Support\SpanNaming;
 use Perfbase\SDK\Config;
 use Perfbase\SDK\Config as SdkConfig;
 use Perfbase\SDK\Perfbase;
 use Perfbase\SDK\Perfbase as PerfbaseClient;
 use Perfbase\SDK\Extension\ExtensionInterface;
 
-/**
- * Class PerfbaseServiceProvider
- */
 class PerfbaseServiceProvider extends ServiceProvider
 {
     use PerfbaseErrorHandling;
 
     /**
-     * Unified span storage with unique IDs
-     * @var array <string, AbstractProfiler>
+     * Active profiler instances keyed by span ID.
+     * @var array<string, AbstractProfiler>
      */
     private array $spans = [];
 
     /**
-     * @return void
+     * Queue job span IDs keyed by job ID.
+     * @var array<string, string>
      */
-    public function boot()
+    private array $queueSpanIds = [];
+
+    /**
+     * Console command span IDs keyed by command name.
+     * @var array<string, string>
+     */
+    private array $consoleSpanIds = [];
+
+    public function boot(): void
     {
         if ($this->app->runningInConsole()) {
             $this->publishes([
                 __DIR__ . '/../config/perfbase.php' => config_path('perfbase.php'),
             ], 'perfbase-config');
-            
-            // Register commands
-            $this->commands([
-                \Perfbase\Laravel\Commands\PerfbaseClearCommand::class,
-                \Perfbase\Laravel\Commands\PerfbaseSyncCommand::class,
-            ]);
         }
 
         if (PerfbaseConfig::enabled()) {
@@ -59,42 +57,19 @@ class PerfbaseServiceProvider extends ServiceProvider
         }
     }
 
-    /**
-     * Register the application services.
-     * @return void
-     */
-    public function register()
+    public function register(): void
     {
-        // Register the config
         $this->mergeConfigFrom(__DIR__ . '/../config/perfbase.php', 'perfbase');
 
-        /**
-         * Bind the Config class to the container
-         */
         $this->app->bind(Config::class, function (Application $app) {
-
-            /**
-             * @var array<string, mixed> $config
-             */
+            /** @var array<string, mixed> $config */
             $config = $app['config'];
 
-            /** @var int $flags */
-            $flags = $config['perfbase.flags'];
-
-            /** @var string|null $proxy */
-            $proxy = $config['perfbase.sending.proxy'];
-
-            /** @var numeric $timeout */
-            $timeout = $config['perfbase.sending.timeout'];
-
-            /** @var string $apiKey */
-            $apiKey = $config['perfbase.api_key'];
-
             return Config::fromArray([
-                'api_key' => $apiKey,
-                'flags' => $flags,
-                'proxy' => $proxy,
-                'timeout' => $timeout,
+                'api_key' => $config['perfbase.api_key'],
+                'flags' => $config['perfbase.flags'],
+                'proxy' => $config['perfbase.proxy'],
+                'timeout' => $config['perfbase.timeout'],
             ]);
         });
 
@@ -102,73 +77,61 @@ class PerfbaseServiceProvider extends ServiceProvider
             /** @var SdkConfig $config */
             $config = $app->make(SdkConfig::class);
 
-            // Check if we have a mocked extension in the container (for testing)
-            $extension = $app->bound(ExtensionInterface::class) 
-                ? $app->make(ExtensionInterface::class) 
+            $extension = $app->bound(ExtensionInterface::class)
+                ? $app->make(ExtensionInterface::class)
                 : null;
 
-            // Start a new perfbase instance
             return new PerfbaseClient($config, $extension);
         });
     }
 
-    /**
-     * Register unified event listeners for profiling
-     *
-     * @return void
-     */
     private function registerEventListeners(): void
     {
+        // Queue: JobProcessing → start, JobProcessed/JobExceptionOccurred → stop
         $this->registerEventPair(
             JobProcessing::class,
             JobProcessed::class,
             JobExceptionOccurred::class,
-            fn($event) => $this->createQueueProfiler($event)
+            fn($event) => $this->createQueueLifecycle($event)
         );
 
+        // Console: CommandStarting → start, CommandFinished → stop
         $this->registerEventPair(
             CommandStarting::class,
             CommandFinished::class,
             null,
-            fn($event) => $this->createConsoleProfiler($event)
+            fn($event) => $this->createConsoleLifecycle($event)
         );
     }
 
-    /**
-     * Register a pair of start/stop/error events with unified handling
-     *
-     * @param string $startEvent
-     * @param string $stopEvent
-     * @param string|null $errorEvent
-     * @param callable $profilerFactory
-     * @return void
-     */
-    private function registerEventPair(string $startEvent, string $stopEvent, ?string $errorEvent, callable $profilerFactory): void
-    {
-        // Start event handler
-        Event::listen($startEvent, function ($event) use ($profilerFactory) {
+    private function registerEventPair(
+        string $startEvent,
+        string $stopEvent,
+        ?string $errorEvent,
+        callable $lifecycleFactory
+    ): void {
+        Event::listen($startEvent, function ($event) use ($lifecycleFactory) {
             try {
                 $spanId = uniqid('span_', true);
-                $profiler = $profilerFactory($event);
-                
-                if ($profiler) {
-                    $this->spans[$spanId] = $profiler;
+                $lifecycle = $lifecycleFactory($event);
+
+                if ($lifecycle) {
+                    $this->spans[$spanId] = $lifecycle;
                     $this->storeSpanId($event, $spanId);
-                    $profiler->startProfiling();
+                    $lifecycle->startProfiling();
                 }
             } catch (\Throwable $e) {
                 $this->handleProfilingError($e, 'event_start');
             }
         });
 
-        // Stop event handler
         Event::listen($stopEvent, function ($event) {
             try {
                 $spanId = $this->getSpanId($event);
                 if ($spanId && isset($this->spans[$spanId])) {
-                    $profiler = $this->spans[$spanId];
-                    $this->handleEventData($event, $profiler);
-                    $profiler->stopProfiling();
+                    $lifecycle = $this->spans[$spanId];
+                    $this->handleEventData($event, $lifecycle);
+                    $lifecycle->stopProfiling();
                     unset($this->spans[$spanId]);
                 }
             } catch (\Throwable $e) {
@@ -176,15 +139,14 @@ class PerfbaseServiceProvider extends ServiceProvider
             }
         });
 
-        // Error event handler (if provided)
         if ($errorEvent) {
             Event::listen($errorEvent, function ($event) {
                 try {
                     $spanId = $this->getSpanId($event);
                     if ($spanId && isset($this->spans[$spanId])) {
-                        $profiler = $this->spans[$spanId];
-                        $this->handleEventData($event, $profiler);
-                        $profiler->stopProfiling();
+                        $lifecycle = $this->spans[$spanId];
+                        $this->handleEventData($event, $lifecycle);
+                        $lifecycle->stopProfiling();
                         unset($this->spans[$spanId]);
                     }
                 } catch (\Throwable $e) {
@@ -194,119 +156,80 @@ class PerfbaseServiceProvider extends ServiceProvider
         }
     }
 
-    /**
-     * Create a queue profiler from event
-     *
-     * @param JobProcessing $event
-     * @return UniversalProfiler
-     */
-    private function createQueueProfiler(JobProcessing $event): UniversalProfiler
+    private function createQueueLifecycle(JobProcessing $event): QueueTraceLifecycle
     {
-        $jobName = $this->getCommandFromJob($event->job);
-        $spanName = SpanNaming::forQueue($jobName);
-        
-        return new UniversalProfiler($spanName, [
-            'job_name' => $jobName,
-            'queue' => $event->job->getQueue(),
-            'connection' => $event->connectionName,
-        ]);
+        $jobName = $this->getJobDisplayName($event->job);
+
+        return new QueueTraceLifecycle(
+            $jobName,
+            $event->job->getQueue(),
+            $event->connectionName
+        );
     }
 
-    /**
-     * Create a console profiler from event
-     *
-     * @param CommandStarting $event
-     * @return UniversalProfiler|null
-     */
-    private function createConsoleProfiler(CommandStarting $event): ?UniversalProfiler
+    private function createConsoleLifecycle(CommandStarting $event): ?ConsoleTraceLifecycle
     {
-        if (!$event->command || !$event->input || !$event->output) {
+        if (!$event->command) {
             return null;
         }
 
-        $spanName = SpanNaming::forConsole($event->command);
-
-        return new UniversalProfiler($spanName, [
-            'command' => $event->command,
-            'arguments' => $event->input->getArguments(),
-            'options' => $event->input->getOptions(),
-        ]);
+        return new ConsoleTraceLifecycle($event->command);
     }
 
-    /**
-     * Store span ID for later retrieval
-     *
-     * @param mixed $event
-     * @param string $spanId
-     * @return void
-     */
-    private function storeSpanId($event, string $spanId): void
+    /** @param JobProcessing|CommandStarting $event */
+    private function storeSpanId(object $event, string $spanId): void
     {
         if ($event instanceof JobProcessing) {
-            // Queue job - store in payload
-            $payload = $event->job->payload();
-            $payload['perfbase_span_id'] = $spanId;
-        } else {
-            // Console command - store as property
-            $event->perfbaseSpanId = $spanId;
+            $jobId = $event->job->getJobId() ?? spl_object_hash($event->job);
+            $this->queueSpanIds[$jobId] = $spanId;
+        } elseif ($event instanceof CommandStarting && $event->command) {
+            $this->consoleSpanIds[$event->command] = $spanId;
         }
     }
 
-    /**
-     * Get span ID from event
-     *
-     * @param mixed $event
-     * @return string|null
-     */
-    private function getSpanId($event): ?string
+    /** @param JobProcessed|JobExceptionOccurred|CommandFinished $event */
+    private function getSpanId(object $event): ?string
     {
         if ($event instanceof JobProcessed || $event instanceof JobExceptionOccurred) {
-            return $event->job->payload()['perfbase_span_id'] ?? null;
+            $jobId = $event->job->getJobId() ?? spl_object_hash($event->job);
+            $spanId = $this->queueSpanIds[$jobId] ?? null;
+            unset($this->queueSpanIds[$jobId]);
+            return $spanId;
         }
-        
-        return $event->perfbaseSpanId ?? null;
+
+        if ($event instanceof CommandFinished && $event->command) {
+            $spanId = $this->consoleSpanIds[$event->command] ?? null;
+            unset($this->consoleSpanIds[$event->command]);
+            return $spanId;
+        }
+
+        return null;
     }
 
-    /**
-     * Handle event-specific data
-     *
-     * @param mixed $event
-     * @param AbstractProfiler $profiler
-     * @return void
-     */
-    private function handleEventData($event, AbstractProfiler $profiler): void
+    /** @param JobProcessed|JobExceptionOccurred|CommandFinished $event */
+    private function handleEventData(object $event, AbstractProfiler $lifecycle): void
     {
         if ($event instanceof JobExceptionOccurred) {
-            $profiler->setException($event->exception->getMessage());
+            $lifecycle->setException($event->exception->getMessage());
         } elseif ($event instanceof CommandFinished) {
-            $profiler->setExitCode($event->exitCode);
+            $lifecycle->setExitCode($event->exitCode);
         }
     }
 
-
-    /**
-     * Get the command name from the job.
-     * @param Job $job
-     * @return string
-     */
-    private function getCommandFromJob(Job $job): string
+    private function getJobDisplayName(Job $job): string
     {
         $payload = $job->payload();
 
-        // Try to get the display name first as it's the most reliable
         if (isset($payload['displayName'])) {
             return $payload['displayName'];
         }
 
-        // Try to get the command name from data
         if (isset($payload['data']['commandName'])) {
             return $payload['data']['commandName'];
         }
 
-        // Try to unserialize the command if it's a serialized object
         if (isset($payload['data']['command'])) {
             $command = $payload['data']['command'];
-            // Check if it's a serialized object (starts with O: or a:)
             if (is_string($command) && preg_match('/^[Oa]:\d+:/', $command)) {
                 try {
                     $unserialized = unserialize($command);
@@ -319,7 +242,6 @@ class PerfbaseServiceProvider extends ServiceProvider
             }
         }
 
-        // Fallback to the job class
         if (isset($payload['job'])) {
             return $payload['job'];
         }
