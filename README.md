@@ -14,7 +14,7 @@
   <a href="https://github.com/perfbaseorg/laravel/blob/main/LICENSE.txt"><img src="https://img.shields.io/packagist/l/perfbase/laravel" alt="License"></a>
   <a href="https://github.com/perfbaseorg/laravel/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/perfbaseorg/laravel/ci.yml?branch=main" alt="CI"></a>
   <img src="https://img.shields.io/badge/php-7.4%2B-blue" alt="PHP Version">
-  <img src="https://img.shields.io/badge/laravel-8.x--12.x-blue" alt="Laravel Version">
+  <img src="https://img.shields.io/badge/laravel-8.x--13.x-blue" alt="Laravel Version">
 </p>
 
 This package is a thin adapter over [`perfbase/php-sdk`](https://packagist.org/packages/perfbase/php-sdk). It wires Laravel request, console, and queue lifecycles into the SDK and leaves trace transport, submission, and extension handling to the shared SDK.
@@ -29,7 +29,7 @@ This package is a thin adapter over [`perfbase/php-sdk`](https://packagist.org/p
 ## Requirements
 
 - PHP `7.4` to `8.5`
-- Laravel `8.x`, `9.x`, `10.x`, `11.x`, or `12.x`
+- Laravel `8.x`, `9.x`, `10.x`, `11.x`, `12.x`, or `13.x`
 - `ext-json`
 - `ext-zlib`
 - `ext-perfbase`
