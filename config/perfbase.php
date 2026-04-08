@@ -155,10 +155,8 @@ return [
     */
     'include' => [
         'http' => ['.*'],
-        'artisan' => ['.*'],
-        'jobs' => ['.*'],
-        'schedule' => ['.*'],
-        'exception' => ['.*'],
+        'console' => ['.*'],
+        'queue' => ['.*'],
     ],
 
     /*
@@ -172,10 +170,8 @@ return [
     */
     'exclude' => [
         'http' => [],
-        'artisan' => ['queue:work'],
-        'jobs' => [],
-        'schedule' => [],
-        'exception' => [],
+        'console' => ['queue:work'],
+        'queue' => [],
     ],
 
 ];

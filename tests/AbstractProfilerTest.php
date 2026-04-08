@@ -151,16 +151,18 @@ class AbstractProfilerTest extends TestCase
     public function testSetDefaultAttributes()
     {
         $this->callPrivateMethod('setDefaultAttributes');
-        
+
         $attributes = $this->getPrivateProperty('attributes');
-        
+
         $this->assertArrayHasKey('hostname', $attributes);
         $this->assertArrayHasKey('environment', $attributes);
         $this->assertArrayHasKey('app_version', $attributes);
         $this->assertArrayHasKey('php_version', $attributes);
-        $this->assertArrayHasKey('user_ip', $attributes);
-        $this->assertArrayHasKey('user_agent', $attributes);
-        
+
+        // user_ip and user_agent are HTTP-only, not in base defaults
+        $this->assertArrayNotHasKey('user_ip', $attributes);
+        $this->assertArrayNotHasKey('user_agent', $attributes);
+
         $this->assertEquals('testing', $attributes['environment']);
         $this->assertEquals('1.0.0', $attributes['app_version']);
         $this->assertEquals(phpversion(), $attributes['php_version']);
@@ -205,9 +207,71 @@ class AbstractProfilerTest extends TestCase
 
     public function testStopProfilingWhenSpanNotStarted()
     {
-        // Just test that method can be called
-        $this->profiler->stopProfiling();
+        // Create a client mock where stopTraceSpan returns false
+        $client = Mockery::mock(PerfbaseClient::class);
+        $client->allows('isExtensionAvailable')->andReturns(true);
+        $client->allows('startTraceSpan');
+        $client->allows('stopTraceSpan')->andReturns(false);
+        $client->allows('setAttribute');
+        $client->allows('reset');
+        // submitTrace should NOT be called
+        $client->shouldNotReceive('submitTrace');
+
+        $this->app->instance(PerfbaseClient::class, $client);
+
+        $profiler = new ConcreteProfiler('not_started');
+        $profiler->stopProfiling();
+
         $this->assertTrue(true);
+    }
+
+    public function testStopProfilingLogsOnSubmitFailure()
+    {
+        // Override mock to return failure
+        $failClient = Mockery::mock(PerfbaseClient::class);
+        $failClient->allows('isExtensionAvailable')->andReturns(true);
+        $failClient->allows('startTraceSpan');
+        $failClient->allows('stopTraceSpan')->andReturns(true);
+        $failClient->allows('setAttribute');
+        $failClient->allows('submitTrace')->andReturns(
+            SubmitResult::retryableFailure(503, 'Service Unavailable')
+        );
+        $failClient->allows('reset');
+
+        $this->app->instance(PerfbaseClient::class, $failClient);
+
+        config(['perfbase.debug' => false, 'perfbase.log_errors' => false]);
+
+        $profiler = new ConcreteProfiler('fail_span');
+        // Should not throw even though submission failed
+        $profiler->stopProfiling();
+
+        $this->assertTrue(true);
+    }
+
+    public function testStopProfilingThrowsInDebugModeOnFailure()
+    {
+        $failClient = Mockery::mock(PerfbaseClient::class);
+        $failClient->allows('isExtensionAvailable')->andReturns(true);
+        $failClient->allows('startTraceSpan');
+        $failClient->allows('stopTraceSpan')->andReturns(true);
+        $failClient->allows('setAttribute');
+        $failClient->allows('submitTrace')->andReturns(
+            SubmitResult::permanentFailure(401, 'Unauthorized')
+        );
+        $failClient->allows('reset');
+
+        $this->app->instance(PerfbaseClient::class, $failClient);
+
+        config(['perfbase.debug' => true]);
+        \Perfbase\Laravel\Support\PerfbaseConfig::clearCache();
+
+        $profiler = new ConcreteProfiler('debug_span');
+
+        $this->expectException(\Perfbase\SDK\Exception\PerfbaseException::class);
+        $this->expectExceptionMessage('Trace submission failed');
+
+        $profiler->stopProfiling();
     }
 
     private function callPrivateMethod(string $methodName, array $args = [])

@@ -8,7 +8,6 @@ use Perfbase\SDK\Exception\PerfbaseException;
 use Perfbase\SDK\Exception\PerfbaseExtensionException;
 use Perfbase\SDK\Exception\PerfbaseInvalidSpanException;
 use Perfbase\SDK\Perfbase as PerfbaseClient;
-use Perfbase\SDK\Utils\EnvironmentUtils;
 use RuntimeException;
 
 abstract class AbstractProfiler
@@ -121,39 +120,21 @@ abstract class AbstractProfiler
     }
 
     /**
-     * Set default attributes that should be included in every trace
-     *
-     * @throws PerfbaseException
+     * Set default attributes that should be included in every trace.
+     * Subclasses should call parent and add context-specific attributes.
      */
     protected function setDefaultAttributes(): void
     {
         $environment = config('app.env', '');
-        if (!is_string($environment)) {
-            throw new PerfbaseException('Config perfbase `app.env` must be a string.');
-        }
-
         $appVersion = config('app.version', '');
-        if (!is_string($appVersion)) {
-            throw new PerfbaseException('Config `app.version` must be a string.');
-        }
-
-        $hostname = gethostname();
-        if (!is_string($hostname)) {
-            $hostname = '';
-        }
-
-        $phpVersion = phpversion();
-        if (!is_string($phpVersion)) {
-            $phpVersion = '';
-        }
+        $hostname = gethostname() ?: '';
+        $phpVersion = phpversion() ?: '';
 
         $this->setAttributes([
             'hostname' => $hostname,
             'environment' => $environment,
             'app_version' => $appVersion,
             'php_version' => $phpVersion,
-            'user_ip' => EnvironmentUtils::getUserIp() ?? '',
-            'user_agent' => EnvironmentUtils::getUserUserAgent() ?? '',
         ]);
     }
 
