@@ -4,6 +4,7 @@ namespace Tests;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Routing\Route;
 use Orchestra\Testbench\TestCase;
 use Perfbase\Laravel\Middleware\PerfbaseMiddleware;
 use Perfbase\Laravel\PerfbaseServiceProvider;
@@ -136,6 +137,84 @@ class PerfbaseMiddlewareTest extends TestCase
         }
     }
 
+    public function testHandleUsesRouteUriForActionWhenRouteResolvesDuringRequest()
+    {
+        $request = Request::create('/media/thumbnail/190476', 'GET');
+        $route = $this->makeRoute(['GET'], '/media/{variant}/{asset}');
+
+        $expectedResponse = new Response('test response', 200);
+
+        $next = function ($request) use ($expectedResponse, $route) {
+            $request->setRouteResolver(fn() => $route);
+
+            return $expectedResponse;
+        };
+
+        [$response, $attributeCalls] = $this->handleRequestAndCaptureAttributes($request, $next);
+
+        $this->assertSame($expectedResponse, $response);
+        $this->assertContains(sprintf('GET %s', $route->uri()), $attributeCalls['action'] ?? []);
+        $this->assertNotContains('GET media/thumbnail/190476', $attributeCalls['action'] ?? []);
+    }
+
+    public function testHandleUsesRouteUriForNestedParameterizedRouteResolvedDuringRequest()
+    {
+        $request = Request::create('/libraries/main/books/42/chapters/9', 'PATCH');
+        $route = $this->makeRoute(
+            ['PATCH'],
+            '/libraries/{library}/books/{book}/chapters/{chapter}'
+        );
+
+        $expectedResponse = new Response('patched', 202);
+
+        $next = function ($request) use ($expectedResponse, $route) {
+            $request->setRouteResolver(fn() => $route);
+
+            return $expectedResponse;
+        };
+
+        [$response, $attributeCalls] = $this->handleRequestAndCaptureAttributes($request, $next);
+
+        $this->assertSame($expectedResponse, $response);
+        $this->assertContains(sprintf('PATCH %s', $route->uri()), $attributeCalls['action'] ?? []);
+        $this->assertNotContains('PATCH libraries/main/books/42/chapters/9', $attributeCalls['action'] ?? []);
+    }
+
+    public function testHandleUsesRouteUriForWildcardStyleDownloadResolvedDuringRequest()
+    {
+        $request = Request::create('/downloads/reports/2026/q1-summary.csv', 'GET');
+        $route = $this->makeRoute(['GET'], '/downloads/{path}');
+
+        $expectedResponse = new Response('download', 200);
+
+        $next = function ($request) use ($expectedResponse, $route) {
+            $request->setRouteResolver(fn() => $route);
+
+            return $expectedResponse;
+        };
+
+        [$response, $attributeCalls] = $this->handleRequestAndCaptureAttributes($request, $next);
+
+        $this->assertSame($expectedResponse, $response);
+        $this->assertContains(sprintf('GET %s', $route->uri()), $attributeCalls['action'] ?? []);
+        $this->assertNotContains('GET downloads/reports/2026/q1-summary.csv', $attributeCalls['action'] ?? []);
+    }
+
+    public function testHandleFallsBackToRequestPathWhenNoRouteIsResolved()
+    {
+        $request = Request::create('/fallback/raw/12345', 'DELETE');
+        $expectedResponse = new Response('gone', 204);
+
+        $next = function ($request) use ($expectedResponse) {
+            return $expectedResponse;
+        };
+
+        [$response, $attributeCalls] = $this->handleRequestAndCaptureAttributes($request, $next);
+
+        $this->assertSame($expectedResponse, $response);
+        $this->assertContains('DELETE fallback/raw/12345', $attributeCalls['action'] ?? []);
+    }
+
     public function testHandlePreservesOriginalResponse()
     {
         $request = Request::create('/test', 'POST');
@@ -185,5 +264,39 @@ class PerfbaseMiddlewareTest extends TestCase
         $response = $this->middleware->handle($request, $next);
 
         $this->assertSame($expectedResponse, $response);
+    }
+
+    /**
+     * @return array{0: Response, 1: array<string, array<int, string>>}
+     */
+    private function handleRequestAndCaptureAttributes(Request $request, callable $next): array
+    {
+        $attributeCalls = [];
+        $client = Mockery::mock(PerfbaseClient::class);
+        $client->allows('isExtensionAvailable')->andReturns(true);
+        $client->allows('startTraceSpan')->andReturns(true);
+        $client->allows('stopTraceSpan')->andReturns(true);
+        $client->allows('submitTrace')->andReturns(SubmitResult::success());
+        $client->allows('getTraceData')->andReturns(['trace' => 'data']);
+        $client->allows('reset')->andReturns(true);
+        $client->allows('setAttribute')->andReturnUsing(
+            function (string $key, string $value) use (&$attributeCalls): bool {
+                $attributeCalls[$key][] = $value;
+
+                return true;
+            }
+        );
+
+        $this->app->instance(PerfbaseClient::class, $client);
+
+        /** @var Response $response */
+        $response = $this->middleware->handle($request, $next);
+
+        return [$response, $attributeCalls];
+    }
+
+    private function makeRoute(array $methods, string $uri): Route
+    {
+        return new Route($methods, $uri, ['controller' => 'SampleAssetController@handle']);
     }
 }

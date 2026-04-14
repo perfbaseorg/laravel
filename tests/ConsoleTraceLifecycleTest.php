@@ -125,7 +125,7 @@ class ConsoleTraceLifecycleTest extends TestCase
         $prop = $reflection->getProperty('spanName');
         $prop->setAccessible(true);
 
-        $this->assertSame('console.migrate:fresh', $prop->getValue($lifecycle));
+        $this->assertSame('artisan', $prop->getValue($lifecycle));
     }
 
     public function testSetExitCode(): void
@@ -144,6 +144,22 @@ class ConsoleTraceLifecycleTest extends TestCase
 
         $attrs = $this->getAttributes($lifecycle);
         $this->assertSame('0', $attrs['exit_code']);
+    }
+
+    public function testStartProfilingUsesArtisanSpanName(): void
+    {
+        $client = Mockery::mock(PerfbaseClient::class);
+        $client->allows('isExtensionAvailable')->andReturns(true);
+        $client->shouldReceive('startTraceSpan')->once()->with('artisan');
+        $client->allows('stopTraceSpan')->andReturns(true);
+        $client->allows('setAttribute');
+        $client->allows('submitTrace')->andReturns(SubmitResult::success());
+        $client->allows('reset');
+        $this->app->instance(PerfbaseClient::class, $client);
+
+        $lifecycle = new ConsoleTraceLifecycle('migrate:fresh');
+        $lifecycle->startProfiling();
+        $this->addToAssertionCount(1);
     }
 
     /**

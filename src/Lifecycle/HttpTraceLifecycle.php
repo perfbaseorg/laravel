@@ -26,6 +26,7 @@ class HttpTraceLifecycle extends AbstractProfiler
     public function setResponse(Response $response): void
     {
         $this->setAttribute('http_status_code', (string) $response->getStatusCode());
+        $this->setAttribute('action', $this->resolveAction());
     }
 
     protected function shouldProfile(): bool
@@ -56,14 +57,9 @@ class HttpTraceLifecycle extends AbstractProfiler
     {
         parent::setDefaultAttributes();
 
-        $route = $this->request->route();
-        $action = $route instanceof Route
-            ? sprintf('%s %s', $this->request->method(), $route->uri())
-            : sprintf('%s %s', $this->request->method(), $this->request->path());
-
         $this->setAttributes([
             'source' => 'http',
-            'action' => $action,
+            'action' => $this->resolveAction(),
             'http_method' => $this->request->method(),
             'http_url' => $this->request->fullUrl(),
             'user_ip' => EnvironmentUtils::getUserIp() ?? '',
@@ -103,5 +99,16 @@ class HttpTraceLifecycle extends AbstractProfiler
         }
 
         return $components;
+    }
+
+    private function resolveAction(): string
+    {
+        $route = $this->request->route();
+
+        if ($route instanceof Route) {
+            return sprintf('%s %s', $this->request->method(), $route->uri());
+        }
+
+        return sprintf('%s %s', $this->request->method(), $this->request->path());
     }
 }

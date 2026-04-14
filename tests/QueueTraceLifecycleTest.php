@@ -127,7 +127,7 @@ class QueueTraceLifecycleTest extends TestCase
         $prop = $reflection->getProperty('spanName');
         $prop->setAccessible(true);
 
-        $this->assertSame('queue.DeepJob', $prop->getValue($lifecycle));
+        $this->assertSame('queue', $prop->getValue($lifecycle));
     }
 
     public function testSetExceptionAttribute(): void
@@ -137,6 +137,22 @@ class QueueTraceLifecycleTest extends TestCase
 
         $attrs = $this->getAttributes($lifecycle);
         $this->assertSame('Something went wrong', $attrs['exception']);
+    }
+
+    public function testStartProfilingUsesQueueSpanName(): void
+    {
+        $client = Mockery::mock(PerfbaseClient::class);
+        $client->allows('isExtensionAvailable')->andReturns(true);
+        $client->shouldReceive('startTraceSpan')->once()->with('queue');
+        $client->allows('stopTraceSpan')->andReturns(true);
+        $client->allows('setAttribute');
+        $client->allows('submitTrace')->andReturns(SubmitResult::success());
+        $client->allows('reset');
+        $this->app->instance(PerfbaseClient::class, $client);
+
+        $lifecycle = new QueueTraceLifecycle('App\Jobs\Nested\DeepJob', 'default', 'redis');
+        $lifecycle->startProfiling();
+        $this->addToAssertionCount(1);
     }
 
     /**
