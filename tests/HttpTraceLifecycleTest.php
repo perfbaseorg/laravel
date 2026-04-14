@@ -6,6 +6,7 @@ require_once __DIR__ . '/TestHelpers.php';
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Routing\Route;
 use Orchestra\Testbench\TestCase;
 use Perfbase\Laravel\Interfaces\ProfiledUser;
 use Perfbase\Laravel\Lifecycle\HttpTraceLifecycle;
@@ -75,6 +76,88 @@ class HttpTraceLifecycleTest extends TestCase
         $this->assertStringContainsString('POST', $attrs['action']);
     }
 
+    public function testUsesRouteUriForActionWhenRouteBecomesAvailableAfterStart(): void
+    {
+        $request = Request::create('/media/thumbnail/190476', 'GET');
+        $lifecycle = new HttpTraceLifecycle($request);
+
+        $lifecycle->startProfiling();
+
+        $route = $this->makeRoute(['GET'], '/media/{variant}/{asset}');
+        $request->setRouteResolver(fn() => $route);
+
+        $lifecycle->setResponse(new Response('', 200));
+
+        $attrs = $this->getAttributes($lifecycle);
+        $this->assertSame(sprintf('GET %s', $route->uri()), $attrs['action']);
+        $this->assertStringNotContainsString('190476', $attrs['action']);
+    }
+
+    public function testUsesRouteUriForNestedParametersWhenRouteBecomesAvailableAfterStart(): void
+    {
+        $request = Request::create('/collections/alpha/items/42/revisions/7', 'PATCH');
+        $lifecycle = new HttpTraceLifecycle($request);
+
+        $lifecycle->startProfiling();
+
+        $route = $this->makeRoute(
+            ['PATCH'],
+            '/collections/{collection}/items/{item}/revisions/{revision}'
+        );
+        $request->setRouteResolver(fn() => $route);
+
+        $lifecycle->setResponse(new Response('', 202));
+
+        $attrs = $this->getAttributes($lifecycle);
+        $this->assertSame(sprintf('PATCH %s', $route->uri()), $attrs['action']);
+        $this->assertStringNotContainsString('/alpha/', $attrs['action']);
+        $this->assertStringNotContainsString('/42/', $attrs['action']);
+        $this->assertStringNotContainsString('/7', $attrs['action']);
+    }
+
+    public function testUsesRouteUriForWildcardStyleDownloadWhenRouteBecomesAvailableAfterStart(): void
+    {
+        $request = Request::create('/downloads/reports/2026/q1-summary.csv', 'GET');
+        $lifecycle = new HttpTraceLifecycle($request);
+
+        $lifecycle->startProfiling();
+
+        $route = $this->makeRoute(['GET'], '/downloads/{path}');
+        $request->setRouteResolver(fn() => $route);
+
+        $lifecycle->setResponse(new Response('', 200));
+
+        $attrs = $this->getAttributes($lifecycle);
+        $this->assertSame(sprintf('GET %s', $route->uri()), $attrs['action']);
+        $this->assertStringNotContainsString('q1-summary.csv', $attrs['action']);
+    }
+
+    public function testKeepsRequestPathAsActionWhenNoRouteIsResolved(): void
+    {
+        $request = Request::create('/fallback/raw/12345', 'DELETE');
+        $lifecycle = new HttpTraceLifecycle($request);
+
+        $lifecycle->startProfiling();
+        $lifecycle->setResponse(new Response('', 204));
+
+        $attrs = $this->getAttributes($lifecycle);
+        $this->assertSame('DELETE fallback/raw/12345', $attrs['action']);
+    }
+
+    public function testPrefersRouteUriOverConcretePathWhenRouteIsAvailableBeforeStart(): void
+    {
+        $request = Request::create('/media/banner/9988', 'GET');
+        $route = $this->makeRoute(['GET'], '/media/{placement}/{asset}');
+        $request->setRouteResolver(fn() => $route);
+
+        $lifecycle = new HttpTraceLifecycle($request);
+        $lifecycle->startProfiling();
+
+        $attrs = $this->getAttributes($lifecycle);
+        $this->assertSame(sprintf('GET %s', $route->uri()), $attrs['action']);
+        $this->assertStringNotContainsString('9988', $attrs['action']);
+    }
+
     public function testSetsResponseStatusCode(): void
     {
         $request = Request::create('/test', 'GET');
@@ -83,6 +166,24 @@ class HttpTraceLifecycleTest extends TestCase
 
         $attrs = $this->getAttributes($lifecycle);
         $this->assertSame('404', $attrs['http_status_code']);
+    }
+
+    public function testStartProfilingUsesHttpSpanName(): void
+    {
+        $client = Mockery::mock(PerfbaseClient::class);
+        $client->allows('isExtensionAvailable')->andReturns(true);
+        $client->shouldReceive('startTraceSpan')->once()->with('http');
+        $client->allows('stopTraceSpan')->andReturns(true);
+        $client->allows('setAttribute');
+        $client->allows('submitTrace')->andReturns(SubmitResult::success());
+        $client->allows('reset');
+        $this->app->instance(PerfbaseClient::class, $client);
+
+        $request = Request::create('/api/users/123', 'GET');
+        $lifecycle = new HttpTraceLifecycle($request);
+
+        $lifecycle->startProfiling();
+        $this->addToAssertionCount(1);
     }
 
     public function testSetsBaseAttributes(): void
@@ -204,5 +305,10 @@ class HttpTraceLifecycleTest extends TestCase
         $method = $reflection->getMethod('shouldProfile');
         $method->setAccessible(true);
         return $method->invoke($lifecycle);
+    }
+
+    private function makeRoute(array $methods, string $uri): Route
+    {
+        return new Route($methods, $uri, ['controller' => 'SampleAssetController@handle']);
     }
 }

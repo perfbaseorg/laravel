@@ -9,6 +9,8 @@ use PHPUnit\Framework\TestCase;
 
 class SpanNamingTest extends TestCase
 {
+    private const SDK_SPAN_NAME_PATTERN = '/^[A-Za-z0-9_-]{1,64}$/';
+
     public function testGenerateBasicSpanName()
     {
         $spanName = SpanNaming::generate('test', 'identifier');
@@ -22,7 +24,7 @@ class SpanNamingTest extends TestCase
         
         $spanName = SpanNaming::forHttp($request);
         
-        $this->assertEquals('http.GET./api/users', $spanName);
+        $this->assertEquals('http', $spanName);
     }
 
     public function testForHttpWithPostRequest()
@@ -31,7 +33,7 @@ class SpanNamingTest extends TestCase
         
         $spanName = SpanNaming::forHttp($request);
         
-        $this->assertEquals('http.POST./api/users', $spanName);
+        $this->assertEquals('http', $spanName);
     }
 
     public function testForHttpWithRootPath()
@@ -40,7 +42,7 @@ class SpanNamingTest extends TestCase
         
         $spanName = SpanNaming::forHttp($request);
         
-        $this->assertEquals('http.GET./', $spanName);
+        $this->assertEquals('http', $spanName);
     }
 
     public function testForHttpWithPathNormalization()
@@ -49,7 +51,7 @@ class SpanNamingTest extends TestCase
         
         $spanName = SpanNaming::forHttp($request);
         
-        $this->assertEquals('http.GET./api/users', $spanName);
+        $this->assertEquals('http', $spanName);
     }
 
     public function testForHttpWithComplexPath()
@@ -58,7 +60,7 @@ class SpanNamingTest extends TestCase
         
         $spanName = SpanNaming::forHttp($request);
         
-        $this->assertEquals('http.PUT./api/v1/users/123/profile', $spanName);
+        $this->assertEquals('http', $spanName);
     }
 
     public function testForHttpWithRoute()
@@ -73,7 +75,7 @@ class SpanNamingTest extends TestCase
         
         $spanName = SpanNaming::forHttp($request);
         
-        $this->assertEquals('http.GET./api/users/{id}', $spanName);
+        $this->assertEquals('http', $spanName);
     }
 
     public function testForHttpWithQueryParameters()
@@ -82,7 +84,7 @@ class SpanNamingTest extends TestCase
         
         $spanName = SpanNaming::forHttp($request);
         
-        $this->assertEquals('http.GET./api/users', $spanName);
+        $this->assertEquals('http', $spanName);
     }
 
     public function testForHttpWithSpecialCharacters()
@@ -91,70 +93,70 @@ class SpanNamingTest extends TestCase
         
         $spanName = SpanNaming::forHttp($request);
         
-        $this->assertEquals('http.GET./api/users-list_endpoint', $spanName);
+        $this->assertEquals('http', $spanName);
     }
 
     public function testForConsoleWithSimpleCommand()
     {
         $spanName = SpanNaming::forConsole('migrate');
         
-        $this->assertEquals('console.migrate', $spanName);
+        $this->assertEquals('artisan', $spanName);
     }
 
     public function testForConsoleWithNamespacedCommand()
     {
         $spanName = SpanNaming::forConsole('migrate:fresh');
         
-        $this->assertEquals('console.migrate:fresh', $spanName);
+        $this->assertEquals('artisan', $spanName);
     }
 
     public function testForConsoleWithComplexCommand()
     {
         $spanName = SpanNaming::forConsole('queue:work --queue=high,default');
         
-        $this->assertEquals('console.queue:work --queue=high,default', $spanName);
+        $this->assertEquals('artisan', $spanName);
     }
 
     public function testForConsoleWithEmptyCommand()
     {
         $spanName = SpanNaming::forConsole('');
         
-        $this->assertEquals('console.', $spanName);
+        $this->assertEquals('artisan', $spanName);
     }
 
     public function testForQueueWithSimpleJobClass()
     {
         $spanName = SpanNaming::forQueue('ProcessPodcast');
         
-        $this->assertEquals('queue.ProcessPodcast', $spanName);
+        $this->assertEquals('queue', $spanName);
     }
 
     public function testForQueueWithNamespacedJobClass()
     {
         $spanName = SpanNaming::forQueue('App\\Jobs\\ProcessPodcast');
         
-        $this->assertEquals('queue.ProcessPodcast', $spanName);
+        $this->assertEquals('queue', $spanName);
     }
 
     public function testForQueueWithDeepNamespacedJobClass()
     {
         $spanName = SpanNaming::forQueue('App\\Jobs\\Email\\SendWelcomeEmail');
         
-        $this->assertEquals('queue.SendWelcomeEmail', $spanName);
+        $this->assertEquals('queue', $spanName);
     }
 
     public function testForQueueWithComplexJobClass()
     {
         $spanName = SpanNaming::forQueue('App\\Jobs\\Reports\\GenerateMonthlyReport');
         
-        $this->assertEquals('queue.GenerateMonthlyReport', $spanName);
+        $this->assertEquals('queue', $spanName);
     }
 
     public function testForQueueWithEmptyJobName()
     {
         $spanName = SpanNaming::forQueue('');
         
-        $this->assertEquals('queue.', $spanName);
+        $this->assertEquals('queue', $spanName);
     }
 
     public function testForDatabaseWithSelectOperation()
@@ -214,17 +216,17 @@ class SpanNamingTest extends TestCase
         $databaseSpan = SpanNaming::forDatabase('SELECT');
         $cacheSpan = SpanNaming::forCache('get');
         
-        // All should follow type.identifier format
-        $this->assertStringContainsString('.', $httpSpan);
-        $this->assertStringContainsString('.', $consoleSpan);
-        $this->assertStringContainsString('.', $queueSpan);
+        // Trace span names must remain SDK-safe.
+        $this->assertMatchesRegularExpression(self::SDK_SPAN_NAME_PATTERN, $httpSpan);
+        $this->assertMatchesRegularExpression(self::SDK_SPAN_NAME_PATTERN, $consoleSpan);
+        $this->assertMatchesRegularExpression(self::SDK_SPAN_NAME_PATTERN, $queueSpan);
         $this->assertStringContainsString('.', $databaseSpan);
         $this->assertStringContainsString('.', $cacheSpan);
         
-        // Should start with the correct type
-        $this->assertStringStartsWith('http.', $httpSpan);
-        $this->assertStringStartsWith('console.', $consoleSpan);
-        $this->assertStringStartsWith('queue.', $queueSpan);
+        // Lifecycle span names are low-cardinality constants.
+        $this->assertSame('http', $httpSpan);
+        $this->assertSame('artisan', $consoleSpan);
+        $this->assertSame('queue', $queueSpan);
         $this->assertStringStartsWith('database.', $databaseSpan);
         $this->assertStringStartsWith('cache.', $cacheSpan);
     }
@@ -237,9 +239,7 @@ class SpanNamingTest extends TestCase
         
         $spanName = SpanNaming::forHttp($request);
         
-        // Should still work with long paths
-        $this->assertStringStartsWith('http.GET.', $spanName);
-        $this->assertStringContainsString($longPath, $spanName);
+        $this->assertSame('http', $spanName);
     }
 
     public function testSpanNameWithSpecialCharacters()
@@ -248,7 +248,7 @@ class SpanNamingTest extends TestCase
         
         $spanName = SpanNaming::forHttp($request);
         
-        $this->assertEquals('http.GET./api/users/@me/profile', $spanName);
+        $this->assertEquals('http', $spanName);
     }
 
     public function testSpanNameWithUnicodeCharacters()
@@ -257,8 +257,19 @@ class SpanNamingTest extends TestCase
         
         $spanName = SpanNaming::forHttp($request);
         
-        // Unicode handling may vary by environment, so just check the prefix
-        $this->assertStringStartsWith('http.GET./api/users/', $spanName);
-        $this->assertStringContainsString('/api/users/', $spanName);
+        $this->assertSame('http', $spanName);
+    }
+
+    public function testLifecycleSpanNamesRemainSdkSafe(): void
+    {
+        $spanNames = [
+            SpanNaming::forHttp(Request::create('/api/users/{id}', 'GET')),
+            SpanNaming::forConsole('queue:work --queue=high,default'),
+            SpanNaming::forQueue('App\\Jobs\\Nested\\DeepJob'),
+        ];
+
+        foreach ($spanNames as $spanName) {
+            $this->assertMatchesRegularExpression(self::SDK_SPAN_NAME_PATTERN, $spanName);
+        }
     }
 }

@@ -3,13 +3,16 @@
 namespace Perfbase\Laravel\Support;
 
 use Illuminate\Http\Request;
-use Illuminate\Routing\Route;
 
 /**
  * Standardized span naming utility
  */
 class SpanNaming
 {
+    private const HTTP_SPAN_NAME = 'http';
+    private const ARTISAN_SPAN_NAME = 'artisan';
+    private const QUEUE_SPAN_NAME = 'queue';
+
     /**
      * Generate a standardized span name
      * Format: {type}.{identifier}
@@ -24,56 +27,39 @@ class SpanNaming
     }
 
     /**
-     * Generate HTTP span name
-     * Format: http.{METHOD}.{path}
+     * Generate HTTP span name.
+     *
+     * Keep lifecycle span names SDK-safe and low-cardinality.
+     * Route detail belongs in trace attributes, not the span identifier.
      *
      * @param Request $request
      * @return string
      */
     public static function forHttp(Request $request): string
     {
-        $method = $request->method();
-        $path = $request->path();
-        
-        // Use route URI if available for better consistency
-        $route = $request->route();
-        if ($route instanceof Route) {
-            $path = $route->uri();
-        }
-        
-        // Ensure path starts with /
-        if (strpos($path, '/') !== 0) {
-            $path = '/' . $path;
-        }
-        
-        return self::generate('http', "{$method}.{$path}");
+        return self::HTTP_SPAN_NAME;
     }
 
     /**
-     * Generate console span name
-     * Format: console.{command}
+     * Generate artisan span name.
      *
      * @param string $command
      * @return string
      */
     public static function forConsole(string $command): string
     {
-        return self::generate('console', $command);
+        return self::ARTISAN_SPAN_NAME;
     }
 
     /**
-     * Generate queue span name
-     * Format: queue.{JobClass}
+     * Generate queue span name.
      *
      * @param string $jobName
      * @return string
      */
     public static function forQueue(string $jobName): string
     {
-        // Extract class name from full namespace
-        $className = class_basename($jobName);
-        
-        return self::generate('queue', $className);
+        return self::QUEUE_SPAN_NAME;
     }
 
     /**
