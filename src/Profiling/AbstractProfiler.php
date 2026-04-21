@@ -85,6 +85,11 @@ abstract class AbstractProfiler
             return;
         }
 
+        if (!$this->shouldSubmitTrace()) {
+            $this->perfbase->reset();
+            return;
+        }
+
         $result = $this->perfbase->submitTrace();
 
         if (!$result->isSuccess()) {
@@ -187,4 +192,12 @@ abstract class AbstractProfiler
      * @return bool
      */
     abstract protected function shouldProfile(): bool;
+
+    /**
+     * Determine if the current trace should be submitted after it stops.
+     */
+    protected function shouldSubmitTrace(): bool
+    {
+        return true;
+    }
 }

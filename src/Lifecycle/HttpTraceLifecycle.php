@@ -5,10 +5,10 @@ namespace Perfbase\Laravel\Lifecycle;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Route;
-use Illuminate\Support\Facades\Auth;
 use Perfbase\Laravel\Interfaces\ProfiledUser;
 use Perfbase\Laravel\Profiling\AbstractProfiler;
 use Perfbase\Laravel\Support\FilterMatcher;
+use Perfbase\Laravel\Support\PerfbaseConfig;
 use Perfbase\Laravel\Support\SpanNaming;
 use Perfbase\SDK\Utils\EnvironmentUtils;
 use Symfony\Component\HttpFoundation\Response;
@@ -16,6 +16,7 @@ use Symfony\Component\HttpFoundation\Response;
 class HttpTraceLifecycle extends AbstractProfiler
 {
     private Request $request;
+    private ?int $responseStatusCode = null;
 
     public function __construct(Request $request)
     {
@@ -25,8 +26,10 @@ class HttpTraceLifecycle extends AbstractProfiler
 
     public function setResponse(Response $response): void
     {
-        $this->setAttribute('http_status_code', (string) $response->getStatusCode());
+        $this->responseStatusCode = $response->getStatusCode();
+        $this->setAttribute('http_status_code', (string) $this->responseStatusCode);
         $this->setAttribute('action', $this->resolveAction());
+        $this->setAuthenticatedUserAttribute();
     }
 
     protected function shouldProfile(): bool
@@ -65,10 +68,29 @@ class HttpTraceLifecycle extends AbstractProfiler
             'user_ip' => EnvironmentUtils::getUserIp() ?? '',
             'user_agent' => EnvironmentUtils::getUserUserAgent() ?? '',
         ]);
+    }
 
-        if (Auth::check()) {
-            $this->setAttribute('user_id', (string) Auth::id());
+    private function setAuthenticatedUserAttribute(): void
+    {
+        /** @var Authenticatable|null $user */
+        $user = $this->request->user();
+
+        if ($user instanceof Authenticatable) {
+            $identifier = $user->getAuthIdentifier();
+
+            if ($identifier !== null && $identifier !== '') {
+                $this->setAttribute('user_id', (string) $identifier);
+            }
         }
+    }
+
+    protected function shouldSubmitTrace(): bool
+    {
+        if ($this->responseStatusCode === null) {
+            return true;
+        }
+
+        return in_array($this->responseStatusCode, PerfbaseConfig::profileHttpStatusCodes(), true);
     }
 
     /**
@@ -87,6 +109,12 @@ class HttpTraceLifecycle extends AbstractProfiler
         $route = $this->request->route();
         if ($route instanceof Route) {
             $explodedAction = explode('@', $route->getActionName());
+            $routeName = $route->getName();
+
+            if (is_string($routeName) && $routeName !== '') {
+                $components[] = $routeName;
+            }
+
             $components[] = $route->getActionName();
             $components[] = $route->uri();
             $components[] = '/' . ltrim($route->uri(), '/');

@@ -32,6 +32,7 @@ class HttpTraceLifecycleTest extends TestCase
         parent::setUp();
 
         PerfbaseConfig::clearCache();
+        $defaultHttpExcludes = config('perfbase.exclude.http', []);
 
         $this->perfbaseClient = Mockery::mock(PerfbaseClient::class);
         $this->perfbaseClient->allows('isExtensionAvailable')->andReturns(true);
@@ -45,14 +46,14 @@ class HttpTraceLifecycleTest extends TestCase
         $this->app->instance(PerfbaseClient::class, $this->perfbaseClient);
 
         config([
-            'perfbase' => [
-                'enabled' => true,
-                'api_key' => 'test-key',
-                'sample_rate' => 1.0,
-                'include' => ['http' => ['*']],
-                'exclude' => ['http' => []],
-            ],
-            'app' => ['env' => 'testing', 'version' => '1.0.0'],
+            'perfbase.enabled' => true,
+            'perfbase.api_key' => 'test-key',
+            'perfbase.sample_rate' => 1.0,
+            'perfbase.profile_http_status_codes' => [...range(200, 299), ...range(500, 599)],
+            'perfbase.include.http' => ['*'],
+            'perfbase.exclude.http' => $defaultHttpExcludes,
+            'app.env' => 'testing',
+            'app.version' => '1.0.0',
         ]);
     }
 
@@ -168,6 +169,72 @@ class HttpTraceLifecycleTest extends TestCase
         $this->assertSame('404', $attrs['http_status_code']);
     }
 
+    public function testStopProfilingSkipsSubmittingForDisallowedStatusCodeByDefault(): void
+    {
+        $client = Mockery::mock(PerfbaseClient::class);
+        $client->allows('isExtensionAvailable')->andReturns(true);
+        $client->shouldReceive('startTraceSpan')->once()->with('http');
+        $client->shouldReceive('stopTraceSpan')->once()->with('http')->andReturn(true);
+        $client->allows('setAttribute');
+        $client->shouldNotReceive('submitTrace');
+        $client->shouldReceive('reset')->once();
+        $this->app->instance(PerfbaseClient::class, $client);
+
+        $request = Request::create('/missing', 'GET');
+        $lifecycle = new HttpTraceLifecycle($request);
+
+        $lifecycle->startProfiling();
+        $lifecycle->setResponse(new Response('', 404));
+        $lifecycle->stopProfiling();
+
+        $this->addToAssertionCount(1);
+    }
+
+    public function testStopProfilingSubmitsForServerErrorStatusCodeByDefault(): void
+    {
+        $client = Mockery::mock(PerfbaseClient::class);
+        $client->allows('isExtensionAvailable')->andReturns(true);
+        $client->shouldReceive('startTraceSpan')->once()->with('http');
+        $client->shouldReceive('stopTraceSpan')->once()->with('http')->andReturn(true);
+        $client->allows('setAttribute');
+        $client->shouldReceive('submitTrace')->once()->andReturn(SubmitResult::success());
+        $client->allows('reset');
+        $this->app->instance(PerfbaseClient::class, $client);
+
+        $request = Request::create('/explode', 'GET');
+        $lifecycle = new HttpTraceLifecycle($request);
+
+        $lifecycle->startProfiling();
+        $lifecycle->setResponse(new Response('', 503));
+        $lifecycle->stopProfiling();
+
+        $this->addToAssertionCount(1);
+    }
+
+    public function testStopProfilingSubmitsForCustomAllowedStatusCode(): void
+    {
+        config(['perfbase.profile_http_status_codes' => [200, 404]]);
+        PerfbaseConfig::clearCache();
+
+        $client = Mockery::mock(PerfbaseClient::class);
+        $client->allows('isExtensionAvailable')->andReturns(true);
+        $client->shouldReceive('startTraceSpan')->once()->with('http');
+        $client->shouldReceive('stopTraceSpan')->once()->with('http')->andReturn(true);
+        $client->allows('setAttribute');
+        $client->shouldReceive('submitTrace')->once()->andReturn(SubmitResult::success());
+        $client->allows('reset');
+        $this->app->instance(PerfbaseClient::class, $client);
+
+        $request = Request::create('/missing', 'GET');
+        $lifecycle = new HttpTraceLifecycle($request);
+
+        $lifecycle->startProfiling();
+        $lifecycle->setResponse(new Response('', 404));
+        $lifecycle->stopProfiling();
+
+        $this->addToAssertionCount(1);
+    }
+
     public function testStartProfilingUsesHttpSpanName(): void
     {
         $client = Mockery::mock(PerfbaseClient::class);
@@ -201,6 +268,43 @@ class HttpTraceLifecycleTest extends TestCase
         $this->assertArrayHasKey('user_agent', $attrs);
     }
 
+    public function testSetsAuthenticatedUserIdFromRequestUser(): void
+    {
+        $user = Mockery::mock(\Illuminate\Contracts\Auth\Authenticatable::class);
+        $user->shouldReceive('getAuthIdentifierName')->andReturn('uuid');
+        $user->shouldReceive('getAuthIdentifier')->andReturn('user-123');
+
+        $request = Request::create('/test', 'GET');
+        $request->setUserResolver(fn() => $user);
+
+        $lifecycle = new HttpTraceLifecycle($request);
+        $lifecycle->startProfiling();
+        $this->assertArrayNotHasKey('user_id', $this->getAttributes($lifecycle));
+
+        $lifecycle->setResponse(new Response('', 200));
+
+        $attrs = $this->getAttributes($lifecycle);
+        $this->assertSame('user-123', $attrs['user_id']);
+    }
+
+    public function testSetsAuthenticatedUserIdWhenUserBecomesAvailableAfterProfilingStarts(): void
+    {
+        $user = Mockery::mock(\Illuminate\Contracts\Auth\Authenticatable::class);
+        $user->shouldReceive('getAuthIdentifierName')->andReturn('uuid');
+        $user->shouldReceive('getAuthIdentifier')->andReturn('user-456');
+
+        $request = Request::create('/test', 'GET');
+
+        $lifecycle = new HttpTraceLifecycle($request);
+        $lifecycle->startProfiling();
+
+        $request->setUserResolver(fn() => $user);
+        $lifecycle->setResponse(new Response('', 200));
+
+        $attrs = $this->getAttributes($lifecycle);
+        $this->assertSame('user-456', $attrs['user_id']);
+    }
+
     public function testShouldProfileReturnsFalseWhenDisabled(): void
     {
         config(['perfbase.enabled' => false]);
@@ -231,6 +335,93 @@ class HttpTraceLifecycleTest extends TestCase
         config(['perfbase.include.http' => ['POST /api/*']]);
 
         $request = Request::create('/web/page', 'GET');
+        $lifecycle = new HttpTraceLifecycle($request);
+
+        $result = $this->callShouldProfile($lifecycle);
+        $this->assertFalse($result);
+    }
+
+    public function testShouldProfileReturnsTrueWhenIncludedByRouteName(): void
+    {
+        config([
+            'perfbase.include.http' => ['admin.users.*'],
+            'perfbase.exclude.http' => [],
+        ]);
+
+        $request = Request::create('/admin/users', 'GET');
+        $request->setRouteResolver(fn() => $this->makeRoute(['GET'], '/admin/users', 'admin.users.index'));
+
+        $lifecycle = new HttpTraceLifecycle($request);
+
+        $result = $this->callShouldProfile($lifecycle);
+        $this->assertTrue($result);
+    }
+
+    public function testShouldProfileReturnsFalseWhenRouteNameDoesNotMatchIncludedPatterns(): void
+    {
+        config([
+            'perfbase.include.http' => ['api.orders.*'],
+            'perfbase.exclude.http' => [],
+        ]);
+
+        $request = Request::create('/admin/users', 'GET');
+        $request->setRouteResolver(fn() => $this->makeRoute(['GET'], '/admin/users', 'admin.users.index'));
+
+        $lifecycle = new HttpTraceLifecycle($request);
+
+        $result = $this->callShouldProfile($lifecycle);
+        $this->assertFalse($result);
+    }
+
+    public function testShouldProfileReturnsFalseWhenExcludedByRouteName(): void
+    {
+        config([
+            'perfbase.include.http' => ['*'],
+            'perfbase.exclude.http' => ['admin.users.*'],
+        ]);
+
+        $request = Request::create('/admin/users', 'GET');
+        $request->setRouteResolver(fn() => $this->makeRoute(['GET'], '/admin/users', 'admin.users.index'));
+
+        $lifecycle = new HttpTraceLifecycle($request);
+
+        $result = $this->callShouldProfile($lifecycle);
+        $this->assertFalse($result);
+    }
+
+    public function testShouldProfileAllowsUnnamedNonNoiseRouteWithDefaultConfig(): void
+    {
+        $request = Request::create('/api/users', 'GET');
+        $lifecycle = new HttpTraceLifecycle($request);
+
+        $result = $this->callShouldProfile($lifecycle);
+        $this->assertTrue($result);
+    }
+
+    public function testShouldProfileReturnsFalseForDefaultFrameworkNoiseRoutes(): void
+    {
+        $paths = [
+            '/up',
+            '/sanctum/csrf-cookie',
+            '/telescope/requests',
+            '/horizon/jobs',
+            '/pulse/stats',
+            '/livewire/update',
+            '/_ignition/health-check',
+        ];
+
+        foreach ($paths as $path) {
+            $request = Request::create($path, 'GET');
+            $lifecycle = new HttpTraceLifecycle($request);
+
+            $result = $this->callShouldProfile($lifecycle);
+            $this->assertFalse($result, sprintf('Expected "%s" to be excluded by default.', $path));
+        }
+    }
+
+    public function testShouldProfileReturnsFalseForOptionsRequestsByDefault(): void
+    {
+        $request = Request::create('/api/users', 'OPTIONS');
         $lifecycle = new HttpTraceLifecycle($request);
 
         $result = $this->callShouldProfile($lifecycle);
@@ -307,8 +498,14 @@ class HttpTraceLifecycleTest extends TestCase
         return $method->invoke($lifecycle);
     }
 
-    private function makeRoute(array $methods, string $uri): Route
+    private function makeRoute(array $methods, string $uri, ?string $name = null): Route
     {
-        return new Route($methods, $uri, ['controller' => 'SampleAssetController@handle']);
+        $route = new Route($methods, $uri, ['controller' => 'SampleAssetController@handle']);
+
+        if ($name !== null) {
+            $route->name($name);
+        }
+
+        return $route;
     }
 }

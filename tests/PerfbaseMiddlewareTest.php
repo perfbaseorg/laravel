@@ -8,6 +8,7 @@ use Illuminate\Routing\Route;
 use Orchestra\Testbench\TestCase;
 use Perfbase\Laravel\Middleware\PerfbaseMiddleware;
 use Perfbase\Laravel\PerfbaseServiceProvider;
+use Perfbase\Laravel\Support\PerfbaseConfig;
 use Perfbase\SDK\Config;
 use Perfbase\SDK\Perfbase as PerfbaseClient;
 use Perfbase\SDK\SubmitResult;
@@ -26,6 +27,8 @@ class PerfbaseMiddlewareTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        PerfbaseConfig::clearCache();
+        $defaultHttpExcludes = config('perfbase.exclude.http', []);
 
         // Mock the Perfbase config and client
         $config = Mockery::mock(Config::class);
@@ -43,17 +46,12 @@ class PerfbaseMiddlewareTest extends TestCase
 
         // Set up basic config
         config([
-            'perfbase' => [
-                'enabled' => true,
-                'api_key' => 'test-key',
-                'sample_rate' => 1.0,
-                'include' => [
-                    'http' => ['*'],
-                ],
-                'exclude' => [
-                    'http' => [],
-                ],
-            ]
+            'perfbase.enabled' => true,
+            'perfbase.api_key' => 'test-key',
+            'perfbase.sample_rate' => 1.0,
+            'perfbase.profile_http_status_codes' => [...range(200, 299), ...range(500, 599)],
+            'perfbase.include.http' => ['*'],
+            'perfbase.exclude.http' => $defaultHttpExcludes,
         ]);
 
         $this->middleware = new PerfbaseMiddleware();
@@ -61,6 +59,7 @@ class PerfbaseMiddlewareTest extends TestCase
 
     protected function tearDown(): void
     {
+        PerfbaseConfig::clearCache();
         Mockery::close();
         parent::tearDown();
     }
@@ -135,6 +134,167 @@ class PerfbaseMiddlewareTest extends TestCase
 
             $this->assertEquals($statusCode, $response->getStatusCode());
         }
+    }
+
+    public function testHandleSkipsTraceSubmissionForDisallowedStatusCodeByDefault()
+    {
+        $client = Mockery::mock(PerfbaseClient::class);
+        $client->allows('isExtensionAvailable')->andReturns(true);
+        $client->shouldReceive('startTraceSpan')->once()->with('http')->andReturn(true);
+        $client->shouldReceive('stopTraceSpan')->once()->with('http')->andReturn(true);
+        $client->allows('setAttribute')->andReturns(true);
+        $client->shouldNotReceive('submitTrace');
+        $client->shouldReceive('reset')->once()->andReturn(true);
+        $this->app->instance(PerfbaseClient::class, $client);
+
+        $request = Request::create('/missing', 'GET');
+        $expectedResponse = new Response('missing', 404);
+
+        $next = function ($request) use ($expectedResponse) {
+            return $expectedResponse;
+        };
+
+        $response = $this->middleware->handle($request, $next);
+
+        $this->assertSame($expectedResponse, $response);
+    }
+
+    public function testHandleSubmitsTraceForServerErrorStatusCodeByDefault()
+    {
+        $client = Mockery::mock(PerfbaseClient::class);
+        $client->allows('isExtensionAvailable')->andReturns(true);
+        $client->shouldReceive('startTraceSpan')->once()->with('http')->andReturn(true);
+        $client->shouldReceive('stopTraceSpan')->once()->with('http')->andReturn(true);
+        $client->allows('setAttribute')->andReturns(true);
+        $client->shouldReceive('submitTrace')->once()->andReturn(SubmitResult::success());
+        $client->allows('reset')->andReturns(true);
+        $this->app->instance(PerfbaseClient::class, $client);
+
+        $request = Request::create('/explode', 'GET');
+        $expectedResponse = new Response('boom', 503);
+
+        $next = function ($request) use ($expectedResponse) {
+            return $expectedResponse;
+        };
+
+        $response = $this->middleware->handle($request, $next);
+
+        $this->assertSame($expectedResponse, $response);
+    }
+
+    public function testHandleSubmitsTraceForCustomAllowedStatusCode()
+    {
+        config(['perfbase.profile_http_status_codes' => [200, 404]]);
+        PerfbaseConfig::clearCache();
+
+        $client = Mockery::mock(PerfbaseClient::class);
+        $client->allows('isExtensionAvailable')->andReturns(true);
+        $client->shouldReceive('startTraceSpan')->once()->with('http')->andReturn(true);
+        $client->shouldReceive('stopTraceSpan')->once()->with('http')->andReturn(true);
+        $client->allows('setAttribute')->andReturns(true);
+        $client->shouldReceive('submitTrace')->once()->andReturn(SubmitResult::success());
+        $client->allows('reset')->andReturns(true);
+        $this->app->instance(PerfbaseClient::class, $client);
+
+        $request = Request::create('/missing', 'GET');
+        $expectedResponse = new Response('missing', 404);
+
+        $next = function ($request) use ($expectedResponse) {
+            return $expectedResponse;
+        };
+
+        $response = $this->middleware->handle($request, $next);
+
+        $this->assertSame($expectedResponse, $response);
+    }
+
+    public function testHandleProfilesRequestWhenIncludedByRouteName()
+    {
+        config([
+            'perfbase.include.http' => ['admin.users.*'],
+            'perfbase.exclude.http' => [],
+        ]);
+
+        $request = Request::create('/admin/users', 'GET');
+        $route = $this->makeRoute(['GET'], '/admin/users', 'admin.users.index');
+        $request->setRouteResolver(fn() => $route);
+        $expectedResponse = new Response('ok', 200);
+
+        $next = function ($request) use ($expectedResponse) {
+            return $expectedResponse;
+        };
+
+        $response = $this->middleware->handle($request, $next);
+
+        $this->assertSame($expectedResponse, $response);
+        $this->perfbaseClient->shouldHaveReceived('startTraceSpan')->once();
+    }
+
+    public function testHandleSkipsRequestWhenExcludedByRouteName()
+    {
+        config([
+            'perfbase.include.http' => ['*'],
+            'perfbase.exclude.http' => ['admin.users.*'],
+        ]);
+
+        $request = Request::create('/admin/users', 'GET');
+        $route = $this->makeRoute(['GET'], '/admin/users', 'admin.users.index');
+        $request->setRouteResolver(fn() => $route);
+        $expectedResponse = new Response('ok', 200);
+
+        $next = function ($request) use ($expectedResponse) {
+            return $expectedResponse;
+        };
+
+        $response = $this->middleware->handle($request, $next);
+
+        $this->assertSame($expectedResponse, $response);
+        $this->perfbaseClient->shouldNotHaveReceived('startTraceSpan');
+    }
+
+    public function testHandleSkipsDefaultFrameworkNoiseRoute()
+    {
+        $request = Request::create('/up', 'GET');
+        $expectedResponse = new Response('healthy', 200);
+
+        $next = function ($request) use ($expectedResponse) {
+            return $expectedResponse;
+        };
+
+        $response = $this->middleware->handle($request, $next);
+
+        $this->assertSame($expectedResponse, $response);
+        $this->perfbaseClient->shouldNotHaveReceived('startTraceSpan');
+    }
+
+    public function testHandleSkipsOptionsRequestsByDefault()
+    {
+        $request = Request::create('/api/users', 'OPTIONS');
+        $expectedResponse = new Response('', 204);
+
+        $next = function ($request) use ($expectedResponse) {
+            return $expectedResponse;
+        };
+
+        $response = $this->middleware->handle($request, $next);
+
+        $this->assertSame($expectedResponse, $response);
+        $this->perfbaseClient->shouldNotHaveReceived('startTraceSpan');
+    }
+
+    public function testHandleProfilesNormalApiRequestWithDefaultExcludes()
+    {
+        $request = Request::create('/api/users', 'GET');
+        $expectedResponse = new Response('ok', 200);
+
+        $next = function ($request) use ($expectedResponse) {
+            return $expectedResponse;
+        };
+
+        $response = $this->middleware->handle($request, $next);
+
+        $this->assertSame($expectedResponse, $response);
+        $this->perfbaseClient->shouldHaveReceived('startTraceSpan')->once();
     }
 
     public function testHandleUsesRouteUriForActionWhenRouteResolvesDuringRequest()
@@ -295,8 +455,14 @@ class PerfbaseMiddlewareTest extends TestCase
         return [$response, $attributeCalls];
     }
 
-    private function makeRoute(array $methods, string $uri): Route
+    private function makeRoute(array $methods, string $uri, ?string $name = null): Route
     {
-        return new Route($methods, $uri, ['controller' => 'SampleAssetController@handle']);
+        $route = new Route($methods, $uri, ['controller' => 'SampleAssetController@handle']);
+
+        if ($name !== null) {
+            $route->name($name);
+        }
+
+        return $route;
     }
 }

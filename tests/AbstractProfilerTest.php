@@ -23,6 +23,27 @@ class ConcreteProfiler extends AbstractProfiler
     }
 }
 
+class ConditionalSubmitProfiler extends AbstractProfiler
+{
+    private bool $shouldSubmitTrace;
+
+    public function __construct(string $spanName, bool $shouldSubmitTrace)
+    {
+        $this->shouldSubmitTrace = $shouldSubmitTrace;
+        parent::__construct($spanName);
+    }
+
+    protected function shouldProfile(): bool
+    {
+        return true;
+    }
+
+    protected function shouldSubmitTrace(): bool
+    {
+        return $this->shouldSubmitTrace;
+    }
+}
+
 class AbstractProfilerTest extends TestCase
 {
     private ConcreteProfiler $profiler;
@@ -220,6 +241,25 @@ class AbstractProfilerTest extends TestCase
         $this->app->instance(PerfbaseClient::class, $client);
 
         $profiler = new ConcreteProfiler('not_started');
+        $profiler->stopProfiling();
+
+        $this->assertTrue(true);
+    }
+
+    public function testStopProfilingResetsWithoutSubmittingWhenTraceShouldBeDropped(): void
+    {
+        $client = Mockery::mock(PerfbaseClient::class);
+        $client->allows('isExtensionAvailable')->andReturns(true);
+        $client->allows('startTraceSpan');
+        $client->allows('stopTraceSpan')->andReturns(true);
+        $client->allows('setAttribute');
+        $client->shouldNotReceive('submitTrace');
+        $client->shouldReceive('reset')->once();
+
+        $this->app->instance(PerfbaseClient::class, $client);
+
+        $profiler = new ConditionalSubmitProfiler('dropped_span', false);
+        $profiler->setAttribute('http_status_code', '404');
         $profiler->stopProfiling();
 
         $this->assertTrue(true);

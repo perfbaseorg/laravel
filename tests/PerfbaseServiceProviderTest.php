@@ -94,6 +94,16 @@ class PerfbaseServiceProviderTest extends TestCase
         $this->assertArrayHasKey('timeout', $config);
         $this->assertArrayHasKey('include', $config);
         $this->assertArrayHasKey('exclude', $config);
+        $this->assertArrayHasKey('profile_http_status_codes', $config);
+    }
+
+    public function testServiceProviderMergesDefaultHttpExcludes(): void
+    {
+        $provider = new PerfbaseServiceProvider($this->app);
+        $provider->register();
+        $provider->boot();
+
+        $this->assertSame($this->defaultHttpExcludes(), config('perfbase.exclude.http'));
     }
 
     public function testServiceProviderRegistersQueueListenersWhenEnabled()
@@ -201,5 +211,27 @@ class PerfbaseServiceProviderTest extends TestCase
         
         // Should not throw exception
         $this->assertTrue(true);
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function defaultHttpExcludes(): array
+    {
+        return [
+            '/up',
+            '/sanctum/csrf-cookie',
+            '/telescope',
+            '/telescope/*',
+            '/horizon',
+            '/horizon/*',
+            '/pulse',
+            '/pulse/*',
+            '/livewire',
+            '/livewire/*',
+            '/_ignition',
+            '/_ignition/*',
+            'OPTIONS *',
+        ];
     }
 }

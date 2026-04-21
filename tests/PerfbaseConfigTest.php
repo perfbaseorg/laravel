@@ -180,6 +180,27 @@ class PerfbaseConfigTest extends TestCase
         $this->assertEquals(1.0, PerfbaseConfig::sampleRate());
     }
 
+    public function testProfileHttpStatusCodesMethod()
+    {
+        config(['perfbase.profile_http_status_codes' => [200, '201', 404]]);
+        PerfbaseConfig::clearCache();
+
+        $this->assertSame([200, 201, 404], PerfbaseConfig::profileHttpStatusCodes());
+    }
+
+    public function testProfileHttpStatusCodesMethodDefault()
+    {
+        PerfbaseConfig::clearCache();
+
+        $statusCodes = PerfbaseConfig::profileHttpStatusCodes();
+
+        $this->assertContains(200, $statusCodes);
+        $this->assertContains(299, $statusCodes);
+        $this->assertContains(500, $statusCodes);
+        $this->assertContains(599, $statusCodes);
+        $this->assertNotContains(404, $statusCodes);
+    }
+
     public function testMultipleCallsUseSameCache()
     {
         config([

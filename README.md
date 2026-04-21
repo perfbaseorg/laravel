@@ -115,6 +115,7 @@ return [
     'log_errors' => env('PERFBASE_LOG_ERRORS', true),
     'api_key' => env('PERFBASE_API_KEY'),
     'sample_rate' => env('PERFBASE_SAMPLE_RATE', 0.1),
+    'profile_http_status_codes' => [...range(200, 299), ...range(500, 599)],
     'timeout' => env('PERFBASE_TIMEOUT', 5),
     'proxy' => env('PERFBASE_PROXY'),
     'flags' => env('PERFBASE_FLAGS', \Perfbase\SDK\FeatureFlags::DefaultFlags),
@@ -143,6 +144,8 @@ return [
 | `PERFBASE_TIMEOUT` | `5` | Trace submission timeout in seconds |
 | `PERFBASE_PROXY` | `null` | Optional outbound proxy |
 | `PERFBASE_FLAGS` | `FeatureFlags::DefaultFlags` | Perfbase extension feature flags |
+
+`profile_http_status_codes` is configured in `config/perfbase.php`. The default `[...range(200, 299), ...range(500, 599)]` submits successful responses and server errors, while dropping common noisy client responses such as `404`. Add codes such as `404` if you want to keep them.
 
 ### Feature flags
 
@@ -177,13 +180,28 @@ Filters are split by context: `http`, `console`, and `queue`.
 
 ```php
 'include' => [
-    'http' => ['GET /api/*', 'POST /checkout'],
+    'http' => ['GET /api/*', 'POST /checkout', 'admin.users.*'],
     'console' => ['migrate*', 'app:*'],
     'queue' => ['App\\Jobs\\Important*'],
 ],
 
 'exclude' => [
-    'http' => ['GET /health*', '_debugbar/*'],
+    'http' => [
+        '/up',
+        '/sanctum/csrf-cookie',
+        '/telescope',
+        '/telescope/*',
+        '/horizon',
+        '/horizon/*',
+        '/pulse',
+        '/pulse/*',
+        '/livewire',
+        '/livewire/*',
+        '/_ignition',
+        '/_ignition/*',
+        'OPTIONS *',
+        'GET /health*',
+    ],
     'console' => ['queue:work', 'horizon:*'],
     'queue' => ['App\\Jobs\\NoisyDebugJob'],
 ],
@@ -192,16 +210,23 @@ Filters are split by context: `http`, `console`, and `queue`.
 Supported filter styles:
 
 - Wildcards like `GET /api/*`
+- Route names like `admin.users.*`
 - Regex patterns like `/^POST \/checkout/`
 - Command patterns like `queue:*`
 - Job class patterns like `App\\Jobs\\*`
 - Controller or action strings matched through Laravel's string matcher
+
+The published config excludes common Laravel framework-noise routes by default: `/up`, `/sanctum/csrf-cookie`, `telescope/*`, `horizon/*`, `pulse/*`, `livewire/*`, `/_ignition/*`, and all `OPTIONS` requests. Remove any of those entries from `exclude.http` if you want to profile them.
 
 ## How it behaves
 
 ### HTTP requests
 
 `PerfbaseMiddleware` creates an `HttpTraceLifecycle` for the current request.
+
+By default, only HTTP responses with a status code in `profile_http_status_codes` are submitted. The published config ships with `[...range(200, 299), ...range(500, 599)]`.
+
+HTTP include/exclude filters can match Laravel route names as well as URIs and controller/action strings.
 
 Recorded attributes include:
 

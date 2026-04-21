@@ -67,6 +67,27 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | HTTP Status Codes To Profile
+    |--------------------------------------------------------------------------
+    |
+    | Only HTTP responses with a status code in this allowlist will be
+    | submitted to Perfbase. By default, the package submits successful 2xx
+    | responses plus server-error 5xx responses, while dropping common noisy
+    | client responses such as 404s.
+    |
+    | Examples:
+    | - Keep the default successful and server-error responses:
+    |     [...range(200, 299), ...range(500, 599)]
+    | - Include 404 responses as well:
+    |     [...range(200, 299), ...range(500, 599), 404]
+    | - Disable HTTP trace submission entirely:
+    |     []
+    |
+    */
+    'profile_http_status_codes' => [...range(200, 299), ...range(500, 599)],
+
+    /*
+    |--------------------------------------------------------------------------
     | HTTP Timeout - Timeout in seconds for API requests.
     |--------------------------------------------------------------------------
     */
@@ -100,7 +121,8 @@ return [
     |
     | This configuration determines which actions are included for profiling
     | when Perfbase profiling is enabled. Specify actions using exact matches,
-    | wildcards, namespaces, controller names, methods, or regular expressions.
+    | wildcards, route names, namespaces, controller names, methods, or regular
+    | expressions.
     |
     | Matching Rules:
     | - **Disable Profiling:** Leave the list empty ([]).
@@ -109,6 +131,9 @@ return [
     |     - Exact Match: 'GET /'
     |     - URI Match: '/api/example'
     |     - Wildcard Match: 'POST /api/*'
+    | - **Route Names:**
+    |     - Exact Match: 'admin.users.index'
+    |     - Wildcard Match: 'api.orders.*'
     | - **Namespace & Controllers:**
     |     - Namespace Prefix: 'App\Http\Controllers\.*'
     |     - Specific Controller: 'UserController'
@@ -129,6 +154,9 @@ return [
     |
     | - Profile all POST requests under `/api/`:
     |     ['POST /api/*']
+    |
+    | - Profile routes by Laravel route name:
+    |     ['admin.users.*', 'api.orders.show']
     |
     | - Profile all controllers in a namespace:
     |     ['App\Http\Controllers\.*']
@@ -165,11 +193,27 @@ return [
     |--------------------------------------------------------------------------
     |
     | If profiling is enabled, this option controls which actions are excluded.
-    | See above `include` section for notes on supported values.
+    | See above `include` section for notes on supported values. The default
+    | HTTP exclusions skip common Laravel framework noise and `OPTIONS`
+    | preflight traffic.
     |
     */
     'exclude' => [
-        'http' => [],
+        'http' => [
+            '/up',
+            '/sanctum/csrf-cookie',
+            '/telescope',
+            '/telescope/*',
+            '/horizon',
+            '/horizon/*',
+            '/pulse',
+            '/pulse/*',
+            '/livewire',
+            '/livewire/*',
+            '/_ignition',
+            '/_ignition/*',
+            'OPTIONS *',
+        ],
         'console' => ['queue:work'],
         'queue' => [],
     ],

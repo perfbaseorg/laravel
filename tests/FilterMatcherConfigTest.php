@@ -89,6 +89,23 @@ class FilterMatcherConfigTest extends TestCase
         $this->assertFalse(FilterMatcher::passesConfigFilters(['GET /api/users'], 'http'));
     }
 
+    public function testRouteNamePatternsWorkThroughExistingHttpMatcher(): void
+    {
+        config([
+            'perfbase.include.http' => ['admin.users.*'],
+            'perfbase.exclude.http' => [],
+        ]);
+
+        $this->assertTrue(FilterMatcher::passesConfigFilters(
+            ['GET /admin/users', 'admin.users.index'],
+            'http'
+        ));
+        $this->assertFalse(FilterMatcher::passesConfigFilters(
+            ['GET /admin/users', 'admin.roles.index'],
+            'http'
+        ));
+    }
+
     public function testMultipleIncludePatterns(): void
     {
         config([

@@ -47,6 +47,34 @@ class PerfbaseConfig
     }
 
     /**
+     * Get the HTTP status codes that should be submitted.
+     *
+     * @return array<int>
+     */
+    public static function profileHttpStatusCodes(): array
+    {
+        $statusCodes = self::get('profile_http_status_codes', [...range(200, 299), ...range(500, 599)]);
+        if (!is_array($statusCodes)) {
+            return [...range(200, 299), ...range(500, 599)];
+        }
+
+        $normalized = [];
+
+        foreach ($statusCodes as $statusCode) {
+            if (is_int($statusCode)) {
+                $normalized[] = $statusCode;
+                continue;
+            }
+
+            if (is_string($statusCode) && ctype_digit($statusCode)) {
+                $normalized[] = (int) $statusCode;
+            }
+        }
+
+        return array_values(array_unique($normalized));
+    }
+
+    /**
      * Clear the cache (useful for testing)
      *
      * @return void
