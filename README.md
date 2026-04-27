@@ -17,7 +17,7 @@
   <img src="https://img.shields.io/badge/laravel-8.x--13.x-blue" alt="Laravel Version">
 </p>
 
-This package is a thin adapter over [`perfbase/php-sdk`](https://packagist.org/packages/perfbase/php-sdk). It wires Laravel request, console, and queue lifecycles into the SDK and leaves trace transport, submission, and extension handling to the shared SDK.
+This package is a thin adapter over [`perfbase/php-sdk`](https://packagist.org/packages/perfbase/php-sdk). It wires Laravel request, Artisan command, and queue job lifecycles into the SDK and leaves trace transport, submission, and extension handling to the shared SDK.
 
 ## What it profiles
 
@@ -102,7 +102,7 @@ return Application::configure(dirname(__DIR__))
     ->create();
 ```
 
-Console and queue profiling do not need middleware. They are wired through the package service provider.
+Artisan command and job profiling do not need middleware. They are wired through the package service provider.
 
 ## Configuration
 
@@ -121,13 +121,13 @@ return [
     'flags' => env('PERFBASE_FLAGS', \Perfbase\SDK\FeatureFlags::DefaultFlags),
     'include' => [
         'http' => ['.*'],
-        'console' => ['.*'],
-        'queue' => ['.*'],
+        'artisan' => ['.*'],
+        'jobs' => ['.*'],
     ],
     'exclude' => [
         'http' => [],
-        'console' => ['queue:work'],
-        'queue' => [],
+        'artisan' => ['queue:work'],
+        'jobs' => [],
     ],
 ];
 ```
@@ -176,13 +176,13 @@ Common flags:
 
 ### Include and exclude filters
 
-Filters are split by context: `http`, `console`, and `queue`.
+Filters are split by context: `http`, `artisan`, and `jobs`.
 
 ```php
 'include' => [
     'http' => ['GET /api/*', 'POST /checkout', 'admin.users.*'],
-    'console' => ['migrate*', 'app:*'],
-    'queue' => ['App\\Jobs\\Important*'],
+    'artisan' => ['migrate*', 'app:*'],
+    'jobs' => ['App\\Jobs\\Important*'],
 ],
 
 'exclude' => [
@@ -202,8 +202,8 @@ Filters are split by context: `http`, `console`, and `queue`.
         'OPTIONS *',
         'GET /health*',
     ],
-    'console' => ['queue:work', 'horizon:*'],
-    'queue' => ['App\\Jobs\\NoisyDebugJob'],
+    'artisan' => ['queue:work', 'horizon:*'],
+    'jobs' => ['App\\Jobs\\NoisyDebugJob'],
 ],
 ```
 
@@ -243,13 +243,13 @@ Recorded attributes include:
 - `hostname`
 - `php_version`
 
-### Console commands
+### Artisan commands
 
 The service provider listens to Laravel console events and creates a `ConsoleTraceLifecycle`.
 
 Recorded attributes include:
 
-- `source=console`
+- `source=artisan`
 - `action`
 - `exit_code`
 - `exception` when present
@@ -264,7 +264,7 @@ The service provider listens to queue worker events and creates a `QueueTraceLif
 
 Recorded attributes include:
 
-- `source=queue`
+- `source=jobs`
 - `action`
 - `queue`
 - `connection`

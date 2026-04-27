@@ -52,6 +52,13 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | API URL - Optional endpoint override for self-hosted or staging receivers.
+    |--------------------------------------------------------------------------
+    */
+    'api_url' => env('PERFBASE_API_URL', 'https://ingress.perfbase.cloud'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Sample Rate - Required - Used to control the sampling rate of the profiler.
     |--------------------------------------------------------------------------
     |
@@ -183,8 +190,8 @@ return [
     */
     'include' => [
         'http' => ['.*'],
-        'console' => ['.*'],
-        'queue' => ['.*'],
+        'artisan' => ['.*'],
+        'jobs' => ['.*'],
     ],
 
     /*
@@ -214,8 +221,8 @@ return [
             '/_ignition/*',
             'OPTIONS *',
         ],
-        'console' => ['queue:work'],
-        'queue' => [],
+        'artisan' => ['queue:work'],
+        'jobs' => [],
     ],
 
 ];

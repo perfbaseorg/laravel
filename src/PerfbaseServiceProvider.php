@@ -67,6 +67,7 @@ class PerfbaseServiceProvider extends ServiceProvider
 
             return Config::fromArray([
                 'api_key' => $config['perfbase.api_key'],
+                'api_url' => $config['perfbase.api_url'] ?? 'https://ingress.perfbase.cloud',
                 'flags' => $config['perfbase.flags'],
                 'proxy' => $config['perfbase.proxy'],
                 'timeout' => $config['perfbase.timeout'],

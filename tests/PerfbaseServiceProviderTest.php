@@ -43,6 +43,7 @@ class PerfbaseServiceProviderTest extends TestCase
             'perfbase' => [
                 'enabled' => true,
                 'api_key' => 'test-key',
+                'api_url' => 'https://ingress.perfbase.cloud',
                 'flags' => 0,
                 'proxy' => null,
                 'timeout' => 5,
@@ -67,6 +68,15 @@ class PerfbaseServiceProviderTest extends TestCase
         $config = $this->app->make(Config::class);
         
         $this->assertInstanceOf(Config::class, $config);
+    }
+
+    public function testConfigBindingForwardsApiUrl(): void
+    {
+        config(['perfbase.api_url' => 'https://receiver.perfbase.local']);
+
+        $config = $this->app->make(Config::class);
+
+        $this->assertSame('https://receiver.perfbase.local', $config->getApiUrl());
     }
 
     public function testServiceProviderRegistersPerfbaseClientAsSingleton()

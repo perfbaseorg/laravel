@@ -22,7 +22,7 @@ class QueueTraceLifecycle extends AbstractProfiler
 
     protected function shouldProfile(): bool
     {
-        return FilterMatcher::passesConfigFilters([$this->jobName], 'queue');
+        return FilterMatcher::passesConfigFilters([$this->jobName], 'jobs');
     }
 
     protected function setDefaultAttributes(): void
@@ -30,7 +30,7 @@ class QueueTraceLifecycle extends AbstractProfiler
         parent::setDefaultAttributes();
 
         $this->setAttributes([
-            'source' => 'queue',
+            'source' => 'jobs',
             'action' => $this->jobName,
             'queue' => $this->queue,
             'connection' => $this->connection,

@@ -26,32 +26,32 @@ class FilterMatcherConfigTest extends TestCase
     public function testFailsWhenNoIncludes(): void
     {
         config([
-            'perfbase.include.queue' => [],
-            'perfbase.exclude.queue' => [],
+            'perfbase.include.jobs' => [],
+            'perfbase.exclude.jobs' => [],
         ]);
 
-        $this->assertFalse(FilterMatcher::passesConfigFilters(['App\Jobs\SendEmail'], 'queue'));
+        $this->assertFalse(FilterMatcher::passesConfigFilters(['App\Jobs\SendEmail'], 'jobs'));
     }
 
     public function testFailsWhenIncludeDoesNotMatch(): void
     {
         config([
-            'perfbase.include.console' => ['migrate*'],
-            'perfbase.exclude.console' => [],
+            'perfbase.include.artisan' => ['migrate*'],
+            'perfbase.exclude.artisan' => [],
         ]);
 
-        $this->assertFalse(FilterMatcher::passesConfigFilters(['queue:work'], 'console'));
+        $this->assertFalse(FilterMatcher::passesConfigFilters(['queue:work'], 'artisan'));
     }
 
     public function testPassesWhenIncludeMatchesSpecificPattern(): void
     {
         config([
-            'perfbase.include.queue' => ['App\Jobs\Important*'],
-            'perfbase.exclude.queue' => [],
+            'perfbase.include.jobs' => ['App\Jobs\Important*'],
+            'perfbase.exclude.jobs' => [],
         ]);
 
-        $this->assertTrue(FilterMatcher::passesConfigFilters(['App\Jobs\ImportantEmail'], 'queue'));
-        $this->assertFalse(FilterMatcher::passesConfigFilters(['App\Jobs\TrivialCleanup'], 'queue'));
+        $this->assertTrue(FilterMatcher::passesConfigFilters(['App\Jobs\ImportantEmail'], 'jobs'));
+        $this->assertFalse(FilterMatcher::passesConfigFilters(['App\Jobs\TrivialCleanup'], 'jobs'));
     }
 
     public function testExcludeOverridesInclude(): void
@@ -109,23 +109,23 @@ class FilterMatcherConfigTest extends TestCase
     public function testMultipleIncludePatterns(): void
     {
         config([
-            'perfbase.include.console' => ['migrate', 'db:seed', 'queue:*'],
-            'perfbase.exclude.console' => [],
+            'perfbase.include.artisan' => ['migrate', 'db:seed', 'queue:*'],
+            'perfbase.exclude.artisan' => [],
         ]);
 
-        $this->assertTrue(FilterMatcher::passesConfigFilters(['migrate'], 'console'));
-        $this->assertTrue(FilterMatcher::passesConfigFilters(['db:seed'], 'console'));
-        $this->assertTrue(FilterMatcher::passesConfigFilters(['queue:work'], 'console'));
-        $this->assertFalse(FilterMatcher::passesConfigFilters(['horizon:work'], 'console'));
+        $this->assertTrue(FilterMatcher::passesConfigFilters(['migrate'], 'artisan'));
+        $this->assertTrue(FilterMatcher::passesConfigFilters(['db:seed'], 'artisan'));
+        $this->assertTrue(FilterMatcher::passesConfigFilters(['queue:work'], 'artisan'));
+        $this->assertFalse(FilterMatcher::passesConfigFilters(['horizon:work'], 'artisan'));
     }
 
     public function testEmptyExcludeDoesNotBlock(): void
     {
         config([
-            'perfbase.include.queue' => ['*'],
-            'perfbase.exclude.queue' => [],
+            'perfbase.include.jobs' => ['*'],
+            'perfbase.exclude.jobs' => [],
         ]);
 
-        $this->assertTrue(FilterMatcher::passesConfigFilters(['App\Jobs\AnyJob'], 'queue'));
+        $this->assertTrue(FilterMatcher::passesConfigFilters(['App\Jobs\AnyJob'], 'jobs'));
     }
 }

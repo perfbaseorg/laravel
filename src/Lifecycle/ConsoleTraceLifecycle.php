@@ -18,7 +18,7 @@ class ConsoleTraceLifecycle extends AbstractProfiler
 
     protected function shouldProfile(): bool
     {
-        return FilterMatcher::passesConfigFilters([$this->command], 'console');
+        return FilterMatcher::passesConfigFilters([$this->command], 'artisan');
     }
 
     protected function setDefaultAttributes(): void
@@ -26,7 +26,7 @@ class ConsoleTraceLifecycle extends AbstractProfiler
         parent::setDefaultAttributes();
 
         $this->setAttributes([
-            'source' => 'console',
+            'source' => 'artisan',
             'action' => $this->command,
         ]);
     }

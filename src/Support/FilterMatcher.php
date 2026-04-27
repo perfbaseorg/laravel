@@ -50,7 +50,7 @@ class FilterMatcher
      * Check if a value passes include/exclude filters from config.
      *
      * @param array<string> $components Values to test
-     * @param string $configKey Config key prefix (e.g. 'http', 'console', 'queue')
+     * @param string $configKey Config key prefix (e.g. 'http', 'artisan', 'jobs')
      * @return bool
      */
     public static function passesConfigFilters(array $components, string $configKey): bool

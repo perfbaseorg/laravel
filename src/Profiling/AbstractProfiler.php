@@ -23,6 +23,8 @@ abstract class AbstractProfiler
     /** @var string */
     protected string $spanName;
 
+    private bool $started = false;
+
     /**
      * @throws BindingResolutionException
      */
@@ -64,6 +66,7 @@ abstract class AbstractProfiler
         }
 
         $this->perfbase->startTraceSpan($this->spanName);
+        $this->started = true;
         $this->setDefaultAttributes();
     }
 
@@ -77,13 +80,20 @@ abstract class AbstractProfiler
      */
     public function stopProfiling(): void
     {
+        if (!$this->started) {
+            return;
+        }
+
         foreach ($this->attributes as $key => $value) {
             $this->perfbase->setAttribute($key, $value);
         }
 
         if (!$this->perfbase->stopTraceSpan($this->spanName)) {
+            $this->started = false;
             return;
         }
+
+        $this->started = false;
 
         if (!$this->shouldSubmitTrace()) {
             $this->perfbase->reset();

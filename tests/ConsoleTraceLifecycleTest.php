@@ -43,8 +43,8 @@ class ConsoleTraceLifecycleTest extends TestCase
             'perfbase' => [
                 'enabled' => true,
                 'sample_rate' => 1.0,
-                'include' => ['console' => ['*']],
-                'exclude' => ['console' => []],
+                'include' => ['artisan' => ['*']],
+                'exclude' => ['artisan' => []],
             ],
             'app' => ['env' => 'production', 'version' => '3.0.0'],
         ]);
@@ -62,7 +62,7 @@ class ConsoleTraceLifecycleTest extends TestCase
         $lifecycle->startProfiling();
 
         $attrs = $this->getAttributes($lifecycle);
-        $this->assertSame('console', $attrs['source']);
+        $this->assertSame('artisan', $attrs['source']);
         $this->assertSame('migrate', $attrs['action']);
     }
 
@@ -92,7 +92,7 @@ class ConsoleTraceLifecycleTest extends TestCase
 
     public function testShouldProfileReturnsTrueWhenIncluded(): void
     {
-        config(['perfbase.include.console' => ['*']]);
+        config(['perfbase.include.artisan' => ['*']]);
 
         $lifecycle = new ConsoleTraceLifecycle('migrate');
         $this->assertTrue($this->callShouldProfile($lifecycle));
@@ -100,7 +100,7 @@ class ConsoleTraceLifecycleTest extends TestCase
 
     public function testShouldProfileReturnsFalseWhenNotIncluded(): void
     {
-        config(['perfbase.include.console' => ['migrate*']]);
+        config(['perfbase.include.artisan' => ['migrate*']]);
 
         $lifecycle = new ConsoleTraceLifecycle('queue:work');
         $this->assertFalse($this->callShouldProfile($lifecycle));
@@ -109,8 +109,8 @@ class ConsoleTraceLifecycleTest extends TestCase
     public function testShouldProfileReturnsFalseWhenExcluded(): void
     {
         config([
-            'perfbase.include.console' => ['*'],
-            'perfbase.exclude.console' => ['queue:work'],
+            'perfbase.include.artisan' => ['*'],
+            'perfbase.exclude.artisan' => ['queue:work'],
         ]);
 
         $lifecycle = new ConsoleTraceLifecycle('queue:work');

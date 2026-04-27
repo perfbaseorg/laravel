@@ -220,6 +220,7 @@ class AbstractProfilerTest extends TestCase
     public function testStopProfilingSubmitsTrace()
     {
         // Just test that the method can be called without errors
+        $this->profiler->startProfiling();
         $this->profiler->setAttribute('test', 'value');
         $this->profiler->stopProfiling();
 
@@ -232,8 +233,8 @@ class AbstractProfilerTest extends TestCase
         $client = Mockery::mock(PerfbaseClient::class);
         $client->allows('isExtensionAvailable')->andReturns(true);
         $client->allows('startTraceSpan');
-        $client->allows('stopTraceSpan')->andReturns(false);
-        $client->allows('setAttribute');
+        $client->shouldNotReceive('stopTraceSpan');
+        $client->shouldNotReceive('setAttribute');
         $client->allows('reset');
         // submitTrace should NOT be called
         $client->shouldNotReceive('submitTrace');
@@ -241,6 +242,29 @@ class AbstractProfilerTest extends TestCase
         $this->app->instance(PerfbaseClient::class, $client);
 
         $profiler = new ConcreteProfiler('not_started');
+        $profiler->setAttribute('late_attribute', 'must_not_leak');
+        $profiler->stopProfiling();
+
+        $this->assertTrue(true);
+    }
+
+    public function testStopProfilingAfterSampledOutStartDoesNotWriteAttributes(): void
+    {
+        config(['perfbase.sample_rate' => 0.0]);
+
+        $client = Mockery::mock(PerfbaseClient::class);
+        $client->allows('isExtensionAvailable')->andReturns(true);
+        $client->shouldNotReceive('startTraceSpan');
+        $client->shouldNotReceive('stopTraceSpan');
+        $client->shouldNotReceive('setAttribute');
+        $client->shouldNotReceive('submitTrace');
+        $client->allows('reset');
+
+        $this->app->instance(PerfbaseClient::class, $client);
+
+        $profiler = new ConcreteProfiler('sampled_out');
+        $profiler->startProfiling();
+        $profiler->setAttribute('late_attribute', 'must_not_leak');
         $profiler->stopProfiling();
 
         $this->assertTrue(true);
@@ -259,6 +283,7 @@ class AbstractProfilerTest extends TestCase
         $this->app->instance(PerfbaseClient::class, $client);
 
         $profiler = new ConditionalSubmitProfiler('dropped_span', false);
+        $profiler->startProfiling();
         $profiler->setAttribute('http_status_code', '404');
         $profiler->stopProfiling();
 
@@ -283,6 +308,7 @@ class AbstractProfilerTest extends TestCase
         config(['perfbase.debug' => false, 'perfbase.log_errors' => false]);
 
         $profiler = new ConcreteProfiler('fail_span');
+        $profiler->startProfiling();
         // Should not throw even though submission failed
         $profiler->stopProfiling();
 
@@ -307,6 +333,7 @@ class AbstractProfilerTest extends TestCase
         \Perfbase\Laravel\Support\PerfbaseConfig::clearCache();
 
         $profiler = new ConcreteProfiler('debug_span');
+        $profiler->startProfiling();
 
         $this->expectException(\Perfbase\SDK\Exception\PerfbaseException::class);
         $this->expectExceptionMessage('Trace submission failed');

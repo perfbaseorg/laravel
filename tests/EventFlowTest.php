@@ -51,11 +51,11 @@ class EventFlowTest extends TestCase
         $app['config']->set('perfbase.proxy', null);
         $app['config']->set('perfbase.timeout', 5);
         $app['config']->set('perfbase.include.http', ['*']);
-        $app['config']->set('perfbase.include.console', ['*']);
-        $app['config']->set('perfbase.include.queue', ['*']);
+        $app['config']->set('perfbase.include.artisan', ['*']);
+        $app['config']->set('perfbase.include.jobs', ['*']);
         $app['config']->set('perfbase.exclude.http', []);
-        $app['config']->set('perfbase.exclude.console', []);
-        $app['config']->set('perfbase.exclude.queue', []);
+        $app['config']->set('perfbase.exclude.artisan', []);
+        $app['config']->set('perfbase.exclude.jobs', []);
         $app['config']->set('app.env', 'testing');
         $app['config']->set('app.version', '1.0.0');
     }

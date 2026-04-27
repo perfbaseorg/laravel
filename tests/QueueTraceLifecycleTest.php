@@ -43,8 +43,8 @@ class QueueTraceLifecycleTest extends TestCase
             'perfbase' => [
                 'enabled' => true,
                 'sample_rate' => 1.0,
-                'include' => ['queue' => ['*']],
-                'exclude' => ['queue' => []],
+                'include' => ['jobs' => ['*']],
+                'exclude' => ['jobs' => []],
             ],
             'app' => ['env' => 'testing', 'version' => '2.0.0'],
         ]);
@@ -62,7 +62,7 @@ class QueueTraceLifecycleTest extends TestCase
         $lifecycle->startProfiling();
 
         $attrs = $this->getAttributes($lifecycle);
-        $this->assertSame('queue', $attrs['source']);
+        $this->assertSame('jobs', $attrs['source']);
         $this->assertSame('App\Jobs\SendEmail', $attrs['action']);
         $this->assertSame('default', $attrs['queue']);
         $this->assertSame('redis', $attrs['connection']);
@@ -94,7 +94,7 @@ class QueueTraceLifecycleTest extends TestCase
 
     public function testShouldProfileReturnsTrueWhenIncluded(): void
     {
-        config(['perfbase.include.queue' => ['*']]);
+        config(['perfbase.include.jobs' => ['*']]);
 
         $lifecycle = new QueueTraceLifecycle('App\Jobs\AnyJob', 'default', 'redis');
         $this->assertTrue($this->callShouldProfile($lifecycle));
@@ -102,7 +102,7 @@ class QueueTraceLifecycleTest extends TestCase
 
     public function testShouldProfileReturnsFalseWhenNotIncluded(): void
     {
-        config(['perfbase.include.queue' => ['App\Jobs\Important*']]);
+        config(['perfbase.include.jobs' => ['App\Jobs\Important*']]);
 
         $lifecycle = new QueueTraceLifecycle('App\Jobs\TrivialCleanup', 'default', 'redis');
         $this->assertFalse($this->callShouldProfile($lifecycle));
@@ -111,8 +111,8 @@ class QueueTraceLifecycleTest extends TestCase
     public function testShouldProfileReturnsFalseWhenExcluded(): void
     {
         config([
-            'perfbase.include.queue' => ['*'],
-            'perfbase.exclude.queue' => ['App\Jobs\Noisy*'],
+            'perfbase.include.jobs' => ['*'],
+            'perfbase.exclude.jobs' => ['App\Jobs\Noisy*'],
         ]);
 
         $lifecycle = new QueueTraceLifecycle('App\Jobs\NoisyHeartbeat', 'default', 'redis');

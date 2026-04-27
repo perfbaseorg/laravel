@@ -10,6 +10,7 @@ use Perfbase\Laravel\Middleware\PerfbaseMiddleware;
 use Perfbase\Laravel\PerfbaseServiceProvider;
 use Perfbase\Laravel\Support\PerfbaseConfig;
 use Perfbase\SDK\Config;
+use Perfbase\SDK\Extension\ExtensionInterface;
 use Perfbase\SDK\Perfbase as PerfbaseClient;
 use Perfbase\SDK\SubmitResult;
 use Mockery;
@@ -97,6 +98,32 @@ class PerfbaseMiddlewareTest extends TestCase
 
         $this->assertSame($expectedResponse, $response);
         $this->assertEquals(200, $response->getStatusCode());
+    }
+
+    public function testHandleContinuesWhenPerfbaseClientCannotBeConstructed(): void
+    {
+        config([
+            'perfbase.api_key' => 'test-key',
+            'perfbase.flags' => 0,
+            'perfbase.proxy' => null,
+            'perfbase.timeout' => 5,
+        ]);
+
+        $extension = Mockery::mock(ExtensionInterface::class);
+        $extension->shouldReceive('isAvailable')->andReturn(false);
+
+        $this->app->forgetInstance(Config::class);
+        $this->app->forgetInstance(PerfbaseClient::class);
+        $this->app->instance(ExtensionInterface::class, $extension);
+
+        $request = Request::create('/test', 'GET');
+        $expectedResponse = new Response('ok', 200);
+
+        $response = $this->middleware->handle($request, function () use ($expectedResponse) {
+            return $expectedResponse;
+        });
+
+        $this->assertSame($expectedResponse, $response);
     }
 
     public function testHandleWithDifferentHttpMethods()
@@ -407,6 +434,39 @@ class PerfbaseMiddlewareTest extends TestCase
             $this->fail('Expected exception was not thrown');
         } catch (\Exception $e) {
             $this->assertEquals('Test exception', $e->getMessage());
+        }
+    }
+
+    public function testHandleStopsAndSubmitsTraceWhenNextThrows(): void
+    {
+        $attributeCalls = [];
+        $client = Mockery::mock(PerfbaseClient::class);
+        $client->allows('isExtensionAvailable')->andReturns(true);
+        $client->shouldReceive('startTraceSpan')->once()->with('http')->andReturn(true);
+        $client->shouldReceive('stopTraceSpan')->once()->with('http')->andReturn(true);
+        $client->allows('setAttribute')->andReturnUsing(
+            function (string $key, string $value) use (&$attributeCalls): bool {
+                $attributeCalls[$key][] = $value;
+
+                return true;
+            }
+        );
+        $client->shouldReceive('submitTrace')->once()->andReturn(SubmitResult::success());
+        $client->allows('reset')->andReturns(true);
+        $this->app->instance(PerfbaseClient::class, $client);
+
+        $request = Request::create('/test', 'GET');
+        $exception = new \Exception('Test exception');
+
+        try {
+            $this->middleware->handle($request, function () use ($exception) {
+                throw $exception;
+            });
+
+            $this->fail('Expected exception was not thrown');
+        } catch (\Exception $e) {
+            $this->assertSame('Test exception', $e->getMessage());
+            $this->assertContains('Test exception', $attributeCalls['exception'] ?? []);
         }
     }
 
