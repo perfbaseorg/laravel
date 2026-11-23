@@ -210,6 +210,24 @@ class PerfbaseServiceProviderTest extends TestCase
         $this->assertInstanceOf(Config::class, $config);
     }
 
+    public function testConfigBindingNormalisesEnvironmentStrings()
+    {
+        // env() hands these over as strings; an empty PERFBASE_PROXY= is ''.
+        config([
+            'perfbase.flags' => (string) \Perfbase\SDK\FeatureFlags::TrackPdo,
+            'perfbase.timeout' => '12',
+            'perfbase.proxy' => '',
+            'perfbase.api_url' => '',
+        ]);
+
+        $config = $this->app->make(Config::class);
+
+        $this->assertSame(\Perfbase\SDK\FeatureFlags::TrackPdo, $config->getFlags());
+        $this->assertSame(12, $config->getTimeout());
+        $this->assertNull($config->getProxy());
+        $this->assertSame('https://ingress.perfbase.cloud', $config->getApiUrl());
+    }
+
     public function testServiceProviderBootsInConsole()
     {
         // Simulate running in console

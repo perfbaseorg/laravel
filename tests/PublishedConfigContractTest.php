@@ -152,6 +152,19 @@ class PublishedConfigContractTest extends TestCase
         $this->assertTrue(true);
     }
 
+    public function testDefaultExcludedLongRunningCommandsDoNotProfileWithPublishedConfig(): void
+    {
+        $commands = ['queue:listen', 'horizon', 'horizon:work', 'schedule:work', 'octane:start', 'reverb:start', 'pulse:check'];
+
+        foreach ($commands as $command) {
+            Event::dispatch(new CommandStarting($command, new ArrayInput([]), new NullOutput()));
+            Event::dispatch(new CommandFinished($command, new ArrayInput([]), new NullOutput(), 0));
+        }
+
+        $this->perfbaseClient->shouldNotHaveReceived('startTraceSpan');
+        $this->assertTrue(true);
+    }
+
     public function testQueueJobProfilesWithPublishedConfig(): void
     {
         $job = $this->createMockJob('App\Jobs\SendEmail');

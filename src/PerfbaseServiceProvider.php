@@ -21,6 +21,7 @@ use Perfbase\SDK\Config as SdkConfig;
 use Perfbase\SDK\Perfbase;
 use Perfbase\SDK\Perfbase as PerfbaseClient;
 use Perfbase\SDK\Extension\ExtensionInterface;
+use Perfbase\SDK\FeatureFlags;
 
 class PerfbaseServiceProvider extends ServiceProvider
 {
@@ -65,12 +66,14 @@ class PerfbaseServiceProvider extends ServiceProvider
             /** @var array<string, mixed> $config */
             $config = $app['config'];
 
+            // Values sourced from env() arrive as strings (or '' for an empty
+            // variable); the SDK's Config is strict about types, so normalise.
             return Config::fromArray([
-                'api_key' => $config['perfbase.api_key'],
-                'api_url' => $config['perfbase.api_url'] ?? 'https://ingress.perfbase.cloud',
-                'flags' => $config['perfbase.flags'],
-                'proxy' => $config['perfbase.proxy'],
-                'timeout' => $config['perfbase.timeout'],
+                'api_key' => self::stringOrNull($config['perfbase.api_key']),
+                'api_url' => self::stringOrNull($config['perfbase.api_url']) ?? 'https://ingress.perfbase.cloud',
+                'flags' => self::intOrDefault($config['perfbase.flags'], FeatureFlags::DefaultFlags),
+                'proxy' => self::stringOrNull($config['perfbase.proxy']),
+                'timeout' => self::intOrDefault($config['perfbase.timeout'], 5),
             ]);
         });
 
@@ -84,6 +87,36 @@ class PerfbaseServiceProvider extends ServiceProvider
 
             return new PerfbaseClient($config, $extension);
         });
+    }
+
+    /**
+     * @param mixed $value
+     */
+    private static function stringOrNull($value): ?string
+    {
+        if (!is_string($value)) {
+            return null;
+        }
+
+        $value = trim($value);
+
+        return $value === '' ? null : $value;
+    }
+
+    /**
+     * @param mixed $value
+     */
+    private static function intOrDefault($value, int $default): int
+    {
+        if (is_int($value)) {
+            return $value;
+        }
+
+        if (is_string($value) && preg_match('/^\s*\d+\s*$/', $value) === 1) {
+            return (int) $value;
+        }
+
+        return $default;
     }
 
     private function registerEventListeners(): void
@@ -231,15 +264,11 @@ class PerfbaseServiceProvider extends ServiceProvider
 
         if (isset($payload['data']['command'])) {
             $command = $payload['data']['command'];
-            if (is_string($command) && preg_match('/^[Oa]:\d+:/', $command)) {
-                try {
-                    $unserialized = unserialize($command);
-                    if (is_object($unserialized)) {
-                        return get_class($unserialized);
-                    }
-                } catch (\Throwable $e) {
-                    // Failed to unserialize, continue
-                }
+            // Read the class name from the serialized object header instead of
+            // unserialize(): that would run __wakeup() and restore
+            // SerializesModels relations (database queries) just for a label.
+            if (is_string($command) && preg_match('/^O:\d+:"([^"]+)"/', $command, $matches) === 1) {
+                return $matches[1];
             }
         }
 

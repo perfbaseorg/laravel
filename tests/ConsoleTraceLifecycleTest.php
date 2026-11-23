@@ -17,6 +17,7 @@ use ReflectionClass;
 class ConsoleTraceLifecycleTest extends TestCase
 {
     private $perfbaseClient;
+    private ?string $originalServerAddr = null;
 
     protected function getPackageProviders($app): array
     {
@@ -27,6 +28,8 @@ class ConsoleTraceLifecycleTest extends TestCase
     {
         parent::setUp();
         PerfbaseConfig::clearCache();
+        $this->originalServerAddr = $_SERVER['SERVER_ADDR'] ?? null;
+        $_SERVER['SERVER_ADDR'] = '10.11.12.13';
 
         $this->perfbaseClient = Mockery::mock(PerfbaseClient::class);
         $this->perfbaseClient->allows('isExtensionAvailable')->andReturns(true);
@@ -52,6 +55,12 @@ class ConsoleTraceLifecycleTest extends TestCase
 
     protected function tearDown(): void
     {
+        if ($this->originalServerAddr === null) {
+            unset($_SERVER['SERVER_ADDR']);
+        } else {
+            $_SERVER['SERVER_ADDR'] = $this->originalServerAddr;
+        }
+
         Mockery::close();
         parent::tearDown();
     }
@@ -76,6 +85,7 @@ class ConsoleTraceLifecycleTest extends TestCase
         $this->assertSame('production', $attrs['environment']);
         $this->assertSame('3.0.0', $attrs['app_version']);
         $this->assertArrayHasKey('php_version', $attrs);
+        $this->assertSame('10.11.12.13', $attrs['user_ip']);
     }
 
     public function testDoesNotSetHttpAttributes(): void
@@ -84,7 +94,6 @@ class ConsoleTraceLifecycleTest extends TestCase
         $lifecycle->startProfiling();
 
         $attrs = $this->getAttributes($lifecycle);
-        $this->assertArrayNotHasKey('user_ip', $attrs);
         $this->assertArrayNotHasKey('user_agent', $attrs);
         $this->assertArrayNotHasKey('http_method', $attrs);
         $this->assertArrayNotHasKey('http_url', $attrs);

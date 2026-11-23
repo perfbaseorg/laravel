@@ -65,6 +65,50 @@ class PerfbaseMiddlewareTest extends TestCase
         parent::tearDown();
     }
 
+    public function testSubmitFailureThrowingDoesNotBreakTheResponse()
+    {
+        config(['perfbase.debug' => false, 'perfbase.log_errors' => false]);
+        PerfbaseConfig::clearCache();
+
+        $client = Mockery::mock(PerfbaseClient::class);
+        $client->allows('isExtensionAvailable')->andReturns(true);
+        $client->allows('startTraceSpan');
+        $client->allows('stopTraceSpan')->andReturns(true);
+        $client->allows('setAttribute');
+        $client->allows('submitTrace')->andThrow(new \Perfbase\SDK\Exception\PerfbaseException('Extension returned empty trace data'));
+        $this->app->instance(PerfbaseClient::class, $client);
+
+        $request = Request::create('/test', 'GET');
+        $expectedResponse = new Response('ok', 200);
+
+        $response = $this->middleware->handle($request, function () use ($expectedResponse) {
+            return $expectedResponse;
+        });
+
+        $this->assertSame($expectedResponse, $response);
+    }
+
+    public function testApplicationExceptionIsRethrownEvenWhenProfilingFails()
+    {
+        config(['perfbase.debug' => false, 'perfbase.log_errors' => false]);
+        PerfbaseConfig::clearCache();
+
+        $client = Mockery::mock(PerfbaseClient::class);
+        $client->allows('isExtensionAvailable')->andReturns(true);
+        $client->allows('startTraceSpan');
+        $client->allows('stopTraceSpan')->andReturns(true);
+        $client->allows('setAttribute');
+        $client->allows('submitTrace')->andThrow(new \Perfbase\SDK\Exception\PerfbaseException('profiling failure'));
+        $this->app->instance(PerfbaseClient::class, $client);
+
+        $this->expectException(\DomainException::class);
+        $this->expectExceptionMessage('application failure');
+
+        $this->middleware->handle(Request::create('/test', 'GET'), function () {
+            throw new \DomainException('application failure');
+        });
+    }
+
     public function testHandleWithProfilingDisabled()
     {
         config(['perfbase.enabled' => false]);

@@ -37,16 +37,20 @@ jobs:
             phpunit: '^11'
           - laravel: '13'
             php: '8.4'
-            testbench: '11.x-dev'
+            testbench: '^11'
             phpunit: '^12'
           - laravel: '13'
             php: '8.5'
-            testbench: '11.x-dev'
+            testbench: '^11'
+            phpunit: '^12'
+          - laravel: '13'
+            php: '8.6'
+            testbench: '^11'
             phpunit: '^12'
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up PHP ${{ matrix.php }}
         uses: shivammathur/setup-php@v2

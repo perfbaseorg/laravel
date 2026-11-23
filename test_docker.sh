@@ -1,7 +1,7 @@
 #!/bin/bash -ex
 
 # Define the PHP versions
-PHP_VERSIONS=("7.4" "8.0" "8.1" "8.2" "8.3" "8.4")
+PHP_VERSIONS=("7.4" "8.0" "8.1" "8.2" "8.3" "8.4" "8.5" "8.6")
 
 # Loop through each PHP version
 for VERSION in "${PHP_VERSIONS[@]}"; do

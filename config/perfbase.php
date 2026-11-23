@@ -221,7 +221,20 @@ return [
             '/_ignition/*',
             'OPTIONS *',
         ],
-        'artisan' => ['queue:work'],
+        // Long-running daemons: they either run jobs in-process (each job is
+        // traced on its own) or never finish, so a command-level trace would
+        // grow without bound.
+        'artisan' => [
+            'queue:work',
+            'queue:listen',
+            'horizon',
+            'horizon:*',
+            'schedule:work',
+            'octane:*',
+            'reverb:start',
+            'pulse:check',
+            'pulse:work',
+        ],
         'jobs' => [],
     ],
 

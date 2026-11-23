@@ -28,7 +28,7 @@ This package is a thin adapter over [`perfbase/php-sdk`](https://packagist.org/p
 
 ## Requirements
 
-- PHP `7.4` to `8.5`
+- PHP `7.4` to `8.6`
 - Laravel `8.x`, `9.x`, `10.x`, `11.x`, `12.x`, or `13.x`
 - `ext-json`
 - `ext-zlib`
@@ -126,7 +126,10 @@ return [
     ],
     'exclude' => [
         'http' => [],
-        'artisan' => ['queue:work'],
+        'artisan' => [
+            'queue:work', 'queue:listen', 'horizon', 'horizon:*', 'schedule:work',
+            'octane:*', 'reverb:start', 'pulse:check', 'pulse:work',
+        ],
         'jobs' => [],
     ],
 ];
@@ -157,22 +160,13 @@ use Perfbase\SDK\FeatureFlags;
 'flags' => FeatureFlags::TrackCpuTime | FeatureFlags::TrackPdo;
 ```
 
-Common flags:
+- `DefaultFlags` (the default): everything except `TrackCpuTime` and `TrackMemoryAllocation`.
+- `AllFlags` (`0`): the extension's default set, i.e. everything except the opt-in `UsePreciseClock` and `TrackCpuTime`.
+- A mask of only opt-in flags (`TrackCpuTime`, `UsePreciseClock`) adds them to the extension's default set; any other mask enables exactly the flags named.
 
-- `UseCoarseClock`
-- `TrackCpuTime`
-- `TrackMemoryAllocation`
-- `TrackPdo`
-- `TrackHttp`
-- `TrackCaches`
-- `TrackMongodb`
-- `TrackElasticsearch`
-- `TrackQueues`
-- `TrackAwsSdk`
-- `TrackFileOperations`
-- `TrackFileCompilation`
-- `TrackFileDefinitions`
-- `TrackExceptions`
+Available flags: `UsePreciseClock`, `TrackCpuTime`, `TrackMemoryAllocation`, `TrackExceptions`, `TrackFileCompilation`, `TrackPdo`, `TrackMongodb`, `TrackElasticsearch`, `TrackCaches`, `TrackHttp`, `TrackMail`, `TrackFileOperations`, `TrackProc`, `TrackProcessList`, `TrackErrors`, `TrackMagicMethods`, `TrackOpcache`, `TrackStreams` (PHP 8.6+). See the [PHP SDK README](https://github.com/perfbaseorg/php-sdk#available-feature-flags) for what each one records.
+
+`PERFBASE_FLAGS` in `.env` takes the integer value of the mask.
 
 ### Include and exclude filters
 
@@ -233,7 +227,7 @@ Recorded attributes include:
 - `source=http`
 - `action`
 - `http_method`
-- `http_url`
+- `http_url` (full URL; values of credential-looking query parameters such as `token`, `password`, `api_key` or `signature` are replaced with `REDACTED`)
 - `http_status_code`
 - `user_ip`
 - `user_agent`
@@ -253,6 +247,7 @@ Recorded attributes include:
 - `action`
 - `exit_code`
 - `exception` when present
+- `user_ip` set to the server IP address
 - `environment`
 - `app_version`
 - `hostname`
@@ -269,6 +264,7 @@ Recorded attributes include:
 - `queue`
 - `connection`
 - `exception` when present
+- `user_ip` set to the server IP address
 - `environment`
 - `app_version`
 - `hostname`
@@ -420,8 +416,8 @@ bash -c "$(curl -fsSL https://cdn.perfbase.com/install.sh)"
 ### High overhead
 
 - Lower `PERFBASE_SAMPLE_RATE`
-- Use `FeatureFlags::UseCoarseClock`
-- Disable feature flags you do not need
+- Leave `TrackCpuTime` and `TrackMemoryAllocation` off unless you need them
+- Disable other feature flags you do not need
 - Narrow your `include` filters and expand your `exclude` filters
 
 ## Documentation

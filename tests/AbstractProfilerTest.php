@@ -49,6 +49,7 @@ class AbstractProfilerTest extends TestCase
     private ConcreteProfiler $profiler;
     private ReflectionClass $reflection;
     private $perfbaseClient;
+    private ?string $originalServerAddr = null;
 
     protected function getPackageProviders($app): array
     {
@@ -58,6 +59,8 @@ class AbstractProfilerTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        $this->originalServerAddr = $_SERVER['SERVER_ADDR'] ?? null;
+        $_SERVER['SERVER_ADDR'] = '10.31.32.33';
         
         // Mock the Perfbase config and client
         $config = Mockery::mock(Config::class);
@@ -92,6 +95,12 @@ class AbstractProfilerTest extends TestCase
 
     protected function tearDown(): void
     {
+        if ($this->originalServerAddr === null) {
+            unset($_SERVER['SERVER_ADDR']);
+        } else {
+            $_SERVER['SERVER_ADDR'] = $this->originalServerAddr;
+        }
+
         Mockery::close();
         parent::tearDown();
     }
@@ -179,9 +188,9 @@ class AbstractProfilerTest extends TestCase
         $this->assertArrayHasKey('environment', $attributes);
         $this->assertArrayHasKey('app_version', $attributes);
         $this->assertArrayHasKey('php_version', $attributes);
+        $this->assertSame('10.31.32.33', $attributes['user_ip']);
 
-        // user_ip and user_agent are HTTP-only, not in base defaults
-        $this->assertArrayNotHasKey('user_ip', $attributes);
+        // user_agent is HTTP-only, not in base defaults.
         $this->assertArrayNotHasKey('user_agent', $attributes);
 
         $this->assertEquals('testing', $attributes['environment']);

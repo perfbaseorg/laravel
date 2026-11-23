@@ -31,16 +31,33 @@ class PerfbaseMiddleware
         try {
             /** @var Response $response */
             $response = $next($request);
-
-            $lifecycle->setResponse($response);
-            $lifecycle->stopProfiling();
-
-            return $response;
         } catch (Throwable $e) {
-            $lifecycle->setException($e->getMessage());
-            $lifecycle->stopProfiling();
+            // Application exception: record it, finish the trace, and rethrow
+            // the application's exception — never a profiling one.
+            $this->finishProfiling($lifecycle, null, $e);
 
             throw $e;
+        }
+
+        $this->finishProfiling($lifecycle, $response, null);
+
+        return $response;
+    }
+
+    private function finishProfiling(HttpTraceLifecycle $lifecycle, ?Response $response, ?Throwable $exception): void
+    {
+        try {
+            if ($response !== null) {
+                $lifecycle->setResponse($response);
+            }
+
+            if ($exception !== null) {
+                $lifecycle->setException($exception->getMessage());
+            }
+
+            $lifecycle->stopProfiling();
+        } catch (Throwable $e) {
+            $this->handleProfilingError($e, 'http_stop');
         }
     }
 }

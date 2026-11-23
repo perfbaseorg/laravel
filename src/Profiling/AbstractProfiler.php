@@ -25,6 +25,9 @@ abstract class AbstractProfiler
 
     private bool $started = false;
 
+    /** @var array<string, string> Hostname => resolved IP ('' when unresolvable), per process. */
+    private static array $resolvedHostIps = [];
+
     /**
      * @throws BindingResolutionException
      */
@@ -147,10 +150,35 @@ abstract class AbstractProfiler
 
         $this->setAttributes([
             'hostname' => $hostname,
+            'user_ip' => $this->resolveServerIp($hostname),
             'environment' => $environment,
             'app_version' => $appVersion,
             'php_version' => $phpVersion,
         ]);
+    }
+
+    private function resolveServerIp(string $hostname): string
+    {
+        $serverAddr = $_SERVER['SERVER_ADDR'] ?? null;
+        if (is_string($serverAddr) && filter_var($serverAddr, FILTER_VALIDATE_IP) !== false) {
+            return $serverAddr;
+        }
+
+        if ($hostname === '') {
+            return '';
+        }
+
+        // CLI (console, queue workers) never has SERVER_ADDR, and
+        // gethostbyname() is a blocking resolver call. Resolve once per
+        // process and hostname rather than at the start of every job.
+        if (!array_key_exists($hostname, self::$resolvedHostIps)) {
+            $resolvedIp = gethostbyname($hostname);
+            self::$resolvedHostIps[$hostname] = $resolvedIp !== $hostname && filter_var($resolvedIp, FILTER_VALIDATE_IP) !== false
+                ? $resolvedIp
+                : '';
+        }
+
+        return self::$resolvedHostIps[$hostname];
     }
 
     /**

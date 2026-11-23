@@ -77,6 +77,20 @@ class HttpTraceLifecycleTest extends TestCase
         $this->assertStringContainsString('POST', $attrs['action']);
     }
 
+    public function testHttpUrlKeepsQueryStringButRedactsCredentials(): void
+    {
+        $request = Request::create('/ajax.php?method=example&token=secret-token&page=2', 'GET');
+        $lifecycle = new HttpTraceLifecycle($request);
+
+        $lifecycle->startProfiling();
+
+        $attrs = $this->getAttributes($lifecycle);
+        $this->assertStringContainsString('method=example', $attrs['http_url']);
+        $this->assertStringContainsString('page=2', $attrs['http_url']);
+        $this->assertStringContainsString('token=REDACTED', $attrs['http_url']);
+        $this->assertStringNotContainsString('secret-token', $attrs['http_url']);
+    }
+
     public function testUsesRouteUriForActionWhenRouteBecomesAvailableAfterStart(): void
     {
         $request = Request::create('/media/thumbnail/190476', 'GET');

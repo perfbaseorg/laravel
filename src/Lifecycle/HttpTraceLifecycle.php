@@ -11,6 +11,7 @@ use Perfbase\Laravel\Support\FilterMatcher;
 use Perfbase\Laravel\Support\PerfbaseConfig;
 use Perfbase\Laravel\Support\SpanNaming;
 use Perfbase\SDK\Utils\EnvironmentUtils;
+use Perfbase\SDK\Utils\UrlSanitizer;
 use Symfony\Component\HttpFoundation\Response;
 
 class HttpTraceLifecycle extends AbstractProfiler
@@ -64,7 +65,9 @@ class HttpTraceLifecycle extends AbstractProfiler
             'source' => 'http',
             'action' => $this->resolveAction(),
             'http_method' => $this->request->method(),
-            'http_url' => $this->request->fullUrl(),
+            // Keep the query string (it often identifies the operation, e.g.
+            // ?method=example) but redact credential-looking parameters.
+            'http_url' => UrlSanitizer::sanitize($this->request->fullUrl()),
             'user_ip' => EnvironmentUtils::getUserIp() ?? '',
             'user_agent' => EnvironmentUtils::getUserUserAgent() ?? '',
         ]);

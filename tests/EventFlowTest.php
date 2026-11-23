@@ -232,6 +232,24 @@ class EventFlowTest extends TestCase
         $this->assertTrue(true);
     }
 
+    public function testJobNameFromSerializedCommandDoesNotUnserialize(): void
+    {
+        WakeupTrackingJob::$wokenUp = false;
+
+        $job = Mockery::mock(Job::class);
+        $job->shouldReceive('payload')->andReturn([
+            'data' => ['command' => serialize(new WakeupTrackingJob())],
+        ]);
+        $job->shouldReceive('getQueue')->andReturn('default');
+        $job->shouldReceive('getJobId')->andReturn('fallback-serialized');
+
+        Event::dispatch(new JobProcessing('database', $job));
+        Event::dispatch(new JobProcessed('database', $job));
+
+        $this->assertFalse(WakeupTrackingJob::$wokenUp, 'The queued command must not be unserialized');
+        $this->perfbaseClient->shouldHaveReceived('setAttribute')->with('action', WakeupTrackingJob::class);
+    }
+
     public function testJobNameFallsBackToPayloadJob(): void
     {
         $job = Mockery::mock(Job::class);
@@ -280,5 +298,16 @@ class EventFlowTest extends TestCase
         $job->shouldReceive('getQueue')->andReturn('default');
         $job->shouldReceive('getJobId')->andReturn($jobId);
         return $job;
+    }
+}
+
+class WakeupTrackingJob
+{
+    /** @var bool */
+    public static $wokenUp = false;
+
+    public function __wakeup()
+    {
+        self::$wokenUp = true;
     }
 }
