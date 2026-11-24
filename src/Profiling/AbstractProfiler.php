@@ -194,14 +194,21 @@ abstract class AbstractProfiler
             throw new RuntimeException('Configured perfbase `sample_rate` must be a decimal between 0.0 and 1.0.');
         }
 
-        /**
-         * Generate a random decimal between 0.0 and 1.0
-         * @var double $randomDecimal
-         */
-        $randomDecimal = mt_rand() / mt_getrandmax();
+        $sampleRate = (float) $sampleRate;
 
-        // Check if the random decimal is less than or equal to the sample rate
-        return $randomDecimal <= $sampleRate;
+        // Short-circuit the bounds: mt_rand() can return 0 (and exactly
+        // mt_getrandmax()), so a plain comparison would occasionally sample
+        // a request at a rate of 0.0, or skip one at 1.0.
+        if ($sampleRate <= 0.0) {
+            return false;
+        }
+
+        if ($sampleRate >= 1.0) {
+            return true;
+        }
+
+        // Random decimal in [0.0, 1.0]; sample when it falls below the rate.
+        return (mt_rand() / mt_getrandmax()) < $sampleRate;
     }
 
     /**
