@@ -148,6 +148,59 @@ class AbstractProfilerTest extends TestCase
         $this->assertFalse($this->callPrivateMethod('passesSampleRateCheck'));
     }
 
+    public function testZeroSampleRateNeverSamplesAndDoesNotConsumeRandomness()
+    {
+        foreach ([0, 0.0, '0', '0.0'] as $rate) {
+            config(['perfbase.sample_rate' => $rate]);
+
+            mt_srand(1234);
+            $expectedNext = mt_rand();
+            mt_srand(1234);
+
+            $this->assertFalse($this->callPrivateMethod('passesSampleRateCheck'));
+            // The RNG must not have been touched: 0.0 is a hard "never".
+            $this->assertSame($expectedNext, mt_rand());
+        }
+
+        mt_srand();
+    }
+
+    public function testFullSampleRateAlwaysSamplesAndDoesNotConsumeRandomness()
+    {
+        foreach ([1, 1.0, '1', '1.0'] as $rate) {
+            config(['perfbase.sample_rate' => $rate]);
+
+            mt_srand(1234);
+            $expectedNext = mt_rand();
+            mt_srand(1234);
+
+            $this->assertTrue($this->callPrivateMethod('passesSampleRateCheck'));
+            $this->assertSame($expectedNext, mt_rand());
+        }
+
+        mt_srand();
+    }
+
+    public function testFractionalSampleRateIsHonouredStatistically()
+    {
+        config(['perfbase.sample_rate' => 0.5]);
+        mt_srand(42);
+
+        $sampled = 0;
+        for ($i = 0; $i < 2000; $i++) {
+            if ($this->callPrivateMethod('passesSampleRateCheck')) {
+                $sampled++;
+            }
+        }
+
+        mt_srand();
+
+        // Seeded, so deterministic; the bounds just guard against an
+        // inverted or always-on comparison.
+        $this->assertGreaterThan(800, $sampled);
+        $this->assertLessThan(1200, $sampled);
+    }
+
     public function testPassesSampleRateCheckThrowsExceptionWithInvalidRate()
     {
         config(['perfbase.sample_rate' => 1.5]); // Invalid rate > 1
