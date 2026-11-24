@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Facade;
  * @method static string getTraceData(string $spanName = '')
  * @method static void reset()
  * @method static bool isExtensionAvailable()
+ * @method static bool isAvailable()
  * @method static void setAttribute(string $key, string $value)
  * @method static void setFlags(int $flags)
  * 
