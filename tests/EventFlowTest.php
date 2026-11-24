@@ -188,12 +188,16 @@ class EventFlowTest extends TestCase
     // Multiple concurrent jobs
     // ---------------------------------------------------------------
 
-    public function testTwoConcurrentJobsTrackedIndependently(): void
+    public function testOverlappingJobsDoNotShareTheQueueSpan(): void
     {
+        // Jobs are processed one at a time, so the only way a second job
+        // starts before the first finishes is a sync job dispatched from
+        // inside a job. All jobs share the "queue" span, and the extension
+        // rejects a second start of a span that is already active, so only
+        // the outermost job is profiled.
         $job1 = $this->createMockJob('App\Jobs\JobA', 'job-1');
         $job2 = $this->createMockJob('App\Jobs\JobB', 'job-2');
 
-        // Start both
         Event::dispatch(new JobProcessing('database', $job1));
         Event::dispatch(new JobProcessing('database', $job2));
 
@@ -201,10 +205,9 @@ class EventFlowTest extends TestCase
         Event::dispatch(new JobProcessed('database', $job2));
         Event::dispatch(new JobProcessed('database', $job1));
 
-        // Both should have been profiled
-        $this->perfbaseClient->shouldHaveReceived('startTraceSpan')->twice();
-        $this->perfbaseClient->shouldHaveReceived('stopTraceSpan')->twice();
-        $this->perfbaseClient->shouldHaveReceived('submitTrace')->twice();
+        $this->perfbaseClient->shouldHaveReceived('startTraceSpan')->once()->with('queue');
+        $this->perfbaseClient->shouldHaveReceived('stopTraceSpan')->once();
+        $this->perfbaseClient->shouldHaveReceived('submitTrace')->once();
         $this->assertTrue(true);
     }
 

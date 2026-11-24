@@ -25,6 +25,17 @@ abstract class AbstractProfiler
 
     private bool $started = false;
 
+    /**
+     * Span names currently owned by a profiling lifecycle, per process,
+     * mapped to the client that started them.
+     *
+     * Lifecycles of the same kind share one span name ("artisan", "queue"),
+     * so a nested one (Artisan::call() inside a command, a sync job inside a
+     * job) must not touch the span its parent already owns.
+     * @var array<string, PerfbaseClient>
+     */
+    private static array $activeSpans = [];
+
     /** @var array<string, string> Hostname => resolved IP ('' when unresolvable), per process. */
     private static array $resolvedHostIps = [];
 
@@ -68,7 +79,12 @@ abstract class AbstractProfiler
             return;
         }
 
+        if (self::isSpanOwned($this->spanName, $this->perfbase)) {
+            return;
+        }
+
         $this->perfbase->startTraceSpan($this->spanName);
+        self::$activeSpans[$this->spanName] = $this->perfbase;
         $this->started = true;
         $this->setDefaultAttributes();
     }
@@ -87,16 +103,23 @@ abstract class AbstractProfiler
             return;
         }
 
+        try {
+            $this->finishProfiling();
+        } finally {
+            $this->started = false;
+            self::releaseSpan($this->spanName, $this->perfbase);
+        }
+    }
+
+    private function finishProfiling(): void
+    {
         foreach ($this->attributes as $key => $value) {
             $this->perfbase->setAttribute($key, $value);
         }
 
         if (!$this->perfbase->stopTraceSpan($this->spanName)) {
-            $this->started = false;
             return;
         }
-
-        $this->started = false;
 
         if (!$this->shouldSubmitTrace()) {
             $this->perfbase->reset();
@@ -114,6 +137,18 @@ abstract class AbstractProfiler
                 )),
                 'submit'
             );
+        }
+    }
+
+    private static function isSpanOwned(string $spanName, PerfbaseClient $client): bool
+    {
+        return isset(self::$activeSpans[$spanName]) && self::$activeSpans[$spanName] === $client;
+    }
+
+    private static function releaseSpan(string $spanName, PerfbaseClient $client): void
+    {
+        if (self::isSpanOwned($spanName, $client)) {
+            unset(self::$activeSpans[$spanName]);
         }
     }
 

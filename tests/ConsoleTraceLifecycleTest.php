@@ -6,13 +6,16 @@ require_once __DIR__ . '/TestHelpers.php';
 
 use Orchestra\Testbench\TestCase;
 use Perfbase\Laravel\Lifecycle\ConsoleTraceLifecycle;
+use Perfbase\Laravel\Lifecycle\QueueTraceLifecycle;
 use Perfbase\Laravel\PerfbaseServiceProvider;
 use Perfbase\Laravel\Support\PerfbaseConfig;
 use Perfbase\SDK\Config;
 use Perfbase\SDK\Perfbase as PerfbaseClient;
 use Perfbase\SDK\SubmitResult;
 use Mockery;
-use ReflectionClass;
+use Perfbase\SDK\Extension\ExtensionInterface;
+use Perfbase\SDK\Http\ApiClient;
+use Perfbase\SDK\Http\HttpClientInterface;use ReflectionClass;
 
 class ConsoleTraceLifecycleTest extends TestCase
 {
@@ -168,6 +171,83 @@ class ConsoleTraceLifecycleTest extends TestCase
 
         $lifecycle = new ConsoleTraceLifecycle('migrate:fresh');
         $lifecycle->startProfiling();
+        $this->addToAssertionCount(1);
+    }
+
+    public function testNestedCommandsProfileOnlyTheOutermostCommand(): void
+    {
+        // A command that runs Artisan::call() inside itself starts a second
+        // console lifecycle while the first is still profiling. Both share
+        // the "artisan" span name, so only the outermost one may own it.
+        $extension = Mockery::mock(ExtensionInterface::class);
+        $extension->allows('isAvailable')->andReturns(true);
+        $extension->allows('getFlags')->andReturns(0);
+        $extension->allows('getSpanData')->andReturns('trace-data');
+        $extension->allows('getWireVersion')->andReturns(1);
+        $extension->allows('getVersion')->andReturns('1.0.0');
+        $extension->allows('reset');
+        // The one submitted trace must describe the outer command, not the
+        // nested one that happened to finish first.
+        $extension->shouldReceive('setAttribute')->once()->with('action', 'migrate:fresh');
+        $extension->shouldReceive('setAttribute')->byDefault();
+        $extension->shouldReceive('startSpan')->once()->with('artisan', Mockery::any(), Mockery::any());
+        $extension->shouldReceive('stopSpan')->once()->with('artisan');
+
+        $httpClient = Mockery::mock(HttpClientInterface::class);
+        $httpClient->allows('post')->andReturns(SubmitResult::success());
+
+        $sdkConfig = Config::new('test-key', 0);
+        $this->app->instance(
+            PerfbaseClient::class,
+            new PerfbaseClient($sdkConfig, $extension, new ApiClient($sdkConfig, $httpClient))
+        );
+
+        // Called directly rather than through the console events: the event
+        // listeners swallow errors, and the real SDK raises a warning when a
+        // nested lifecycle starts the "artisan" span a second time.
+        $outer = new ConsoleTraceLifecycle('migrate:fresh');
+        $inner = new ConsoleTraceLifecycle('migrate');
+
+        $outer->startProfiling();
+        $inner->startProfiling();
+        $inner->stopProfiling();
+        $outer->stopProfiling();
+
+        $this->addToAssertionCount(1);
+    }
+
+    public function testNestedJobsProfileOnlyTheOutermostJob(): void
+    {
+        // A job dispatched on the sync connection runs inside the job that
+        // dispatched it; both share the "queue" span name.
+        $extension = Mockery::mock(ExtensionInterface::class);
+        $extension->allows('isAvailable')->andReturns(true);
+        $extension->allows('getFlags')->andReturns(0);
+        $extension->allows('getSpanData')->andReturns('trace-data');
+        $extension->allows('getWireVersion')->andReturns(1);
+        $extension->allows('getVersion')->andReturns('1.0.0');
+        $extension->allows('reset');
+        $extension->shouldReceive('setAttribute')->once()->with('action', 'App\\Jobs\\OuterJob');
+        $extension->shouldReceive('setAttribute')->byDefault();
+        $extension->shouldReceive('startSpan')->once()->with('queue', Mockery::any(), Mockery::any());
+        $extension->shouldReceive('stopSpan')->once()->with('queue');
+
+        $httpClient = Mockery::mock(HttpClientInterface::class);
+        $httpClient->allows('post')->andReturns(SubmitResult::success());
+
+        $sdkConfig = Config::new('test-key', 0);
+        $client = new PerfbaseClient($sdkConfig, $extension, new ApiClient($sdkConfig, $httpClient));
+        $this->app->instance(PerfbaseClient::class, $client);
+        config(['perfbase.include.jobs' => ['*']]);
+
+        $outer = new QueueTraceLifecycle('App\\Jobs\\OuterJob', 'default', 'sync');
+        $inner = new QueueTraceLifecycle('App\\Jobs\\InnerJob', 'default', 'sync');
+
+        $outer->startProfiling();
+        $inner->startProfiling();
+        $inner->stopProfiling();
+        $outer->stopProfiling();
+
         $this->addToAssertionCount(1);
     }
 
