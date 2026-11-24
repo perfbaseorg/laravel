@@ -1,0 +1,56 @@
+name: Release
+
+# Pushing a version tag (e.g. `git tag v1.2.3 && git push origin v1.2.3`) publishes a
+# GitHub release for it with auto-generated notes. Tags must point at a commit on main.
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Publish GitHub release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Ensure tag commit is on main
+        run: |
+          git fetch --no-tags origin main
+          TAG_COMMIT="$(git rev-list -n 1 "$GITHUB_REF_NAME")"
+          if ! git merge-base --is-ancestor "$TAG_COMMIT" origin/main; then
+            echo "::error::Tag $GITHUB_REF_NAME points at $TAG_COMMIT, which is not on main."
+            exit 1
+          fi
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "Release $GITHUB_REF_NAME already exists; nothing to do."
+            exit 0
+          fi
+
+          # Tags with a suffix (v1.2.3-beta.1, v1.2.3-rc1) are published as pre-releases.
+          PRERELEASE=()
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then
+            PRERELEASE=(--prerelease)
+          fi
+
+          gh release create "$GITHUB_REF_NAME" \
+            --verify-tag \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            "${PRERELEASE[@]}"
